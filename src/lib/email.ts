@@ -79,12 +79,15 @@ My recent work covers React.js, Next.js, TypeScript, Node.js, Laravel, MySQL and
 
 Please find my CV attached for your review. I would be grateful for the opportunity to discuss how I can support your team.
 
+I look forward to hearing from you. You are also welcome to reach me on WhatsApp at 0322-4188759.
+
 Kind regards,
 ${name}
 Full Stack Web Developer
 Johar Town, Lahore, Pakistan
 ${email}
-0322-4188759`;
+0322-4188759
+https://github.com/waqasahmad18`;
 
   return { subject, body };
 }
