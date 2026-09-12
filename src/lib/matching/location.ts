@@ -79,7 +79,7 @@ export function classifyLocation(
     return { class: "lahore-onsite", allowed: true, reason: "Lahore software-house listing." };
   }
 
-  if (job.source === "remoteok" || /remote/i.test(locationField)) {
+  if (job.source === "remoteok" || job.source === "remote-houses" || /remote/i.test(locationField)) {
     return { class: "remote-worldwide", allowed: true, reason: "Listed as a remote posting." };
   }
 

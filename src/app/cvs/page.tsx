@@ -51,9 +51,9 @@ export default function CvsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-5 sm:space-y-6">
       <header>
-        <h2 className="text-3xl font-semibold">CV versions</h2>
+        <h2 className="text-2xl font-semibold sm:text-3xl">CV versions</h2>
         <p className="mt-2 text-sm text-[var(--muted)]">
           Waqas Rafique&apos;s master CV is attached to every qualifying application.
         </p>
@@ -72,7 +72,7 @@ export default function CvsPage() {
           <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} />
           Default fallback CV
         </label>
-        <button className="w-fit rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#1b1406]">
+        <button className="min-h-11 w-full rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#1b1406] sm:w-fit">
           Upload CV
         </button>
       </form>
@@ -81,7 +81,7 @@ export default function CvsPage() {
 
       <div className="space-y-3">
         {cvs.map((cv) => (
-          <article key={cv._id} className="panel flex items-center justify-between gap-4 p-4">
+          <article key={cv._id} className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div>
               <p className="font-medium">{cv.name}</p>
               <p className="text-sm text-[var(--muted)]">

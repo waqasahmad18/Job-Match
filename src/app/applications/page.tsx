@@ -31,9 +31,9 @@ export default function ApplicationsPage() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-5 sm:space-y-6">
       <header>
-        <h2 className="text-3xl font-semibold">Sent CVs & email drafts</h2>
+        <h2 className="text-2xl font-semibold sm:text-3xl">Sent CVs & email drafts</h2>
         <p className="mt-2 text-sm text-[var(--muted)]">
           Har company ko jo mail CV ke sath gayi, uska poora draft yahan hai — subject, hiring email, aur body.
         </p>
@@ -44,7 +44,7 @@ export default function ApplicationsPage() {
           Calendar date
           <input
             type="date"
-            className="rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2"
+            className="min-h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 sm:w-auto"
             value={date}
             max={todayPakistan()}
             onChange={(e) => setDate(e.target.value)}

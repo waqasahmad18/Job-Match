@@ -13,7 +13,7 @@ const EMPTY: UserSettings = {
   onsiteCities: [],
   skills: [],
   matchThreshold: 80,
-  dailySendLimit: 50,
+  dailySendLimit: 20,
   minSalaryPkr: 80000,
   cooldownDays: 14,
   autoSend: true,
@@ -84,9 +84,9 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-5 sm:space-y-6">
       <header>
-        <h2 className="text-3xl font-semibold">Settings</h2>
+        <h2 className="text-2xl font-semibold sm:text-3xl">Settings</h2>
         <p className="mt-2 text-sm text-[var(--muted)]">
           Daily quota: 5–10 Lahore full-stack CVs and 20 companies total including worldwide remote.
           Other-city onsite is skipped. Interact Global is skipped.
@@ -102,7 +102,7 @@ export default function SettingsPage() {
           Applicant / reply email
           <input className="rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2" value={settings.applicantEmail} onChange={(e) => setSettings({ ...settings, applicantEmail: e.target.value })} />
         </label>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <label className="grid gap-2 text-sm">
             Match threshold
             <input type="number" min={50} max={100} className="rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2" value={settings.matchThreshold} onChange={(e) => setSettings({ ...settings, matchThreshold: Number(e.target.value) })} />
@@ -190,7 +190,7 @@ export default function SettingsPage() {
           Excluded technologies
           <textarea className="min-h-20 rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2" value={lists.excludedTechnologies} onChange={(e) => setLists({ ...lists, excludedTechnologies: e.target.value })} />
         </label>
-        <button className="w-fit rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#1b1406]">
+        <button className="min-h-11 w-full rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#1b1406] sm:w-fit">
           Save settings
         </button>
       </form>

@@ -53,16 +53,16 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mx-auto max-w-6xl space-y-5 sm:space-y-6">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm text-[var(--muted)]">Today</p>
-          <h2 className="text-3xl font-semibold">Matching overview</h2>
+          <h2 className="text-2xl font-semibold sm:text-3xl">Matching overview</h2>
         </div>
         <button
           onClick={runPipeline}
           disabled={running}
-          className="rounded-full bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-[#1b1406] disabled:opacity-60"
+          className="min-h-11 w-full rounded-full bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-[#1b1406] disabled:opacity-60 sm:w-auto"
         >
           {running ? "Running..." : "Collect & match jobs"}
         </button>
@@ -76,7 +76,7 @@ export default function DashboardPage() {
 
       {message ? <p className="text-sm text-[var(--muted)]">{message}</p> : null}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
         <StatCard label="Jobs found today" value={stats?.jobsToday ?? "—"} />
         <StatCard
           label="Relevant jobs"
@@ -132,10 +132,26 @@ export default function DashboardPage() {
       </section>
 
       <article className="panel overflow-hidden">
-        <div className="border-b border-[var(--line)] px-5 py-4">
+        <div className="border-b border-[var(--line)] px-4 py-4 sm:px-5">
           <h3 className="text-lg font-semibold">Recent applications</h3>
         </div>
-        <div className="overflow-x-auto">
+        <div className="space-y-3 p-4 md:hidden">
+          {applications.slice(0, 8).map((item) => (
+            <div key={item._id} className="rounded-xl border border-[var(--line)] bg-[var(--panel-2)] p-4">
+              <p className="font-medium">{item.job?.title || "Job"}</p>
+              <p className="text-sm text-[var(--muted)]">{item.job?.company}</p>
+              <p className={`mt-2 text-sm capitalize ${statusTone(item.status)}`}>
+                {item.status} · Score {item.score ?? "—"}
+              </p>
+              <p className="mt-1 break-all text-sm text-[var(--muted)]">{item.emailTo || item.reason || "—"}</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">{formatDate(item.createdAt)}</p>
+            </div>
+          ))}
+          {!applications.length ? (
+            <p className="py-4 text-sm text-[var(--muted)]">No applications yet. Daily automation will send CVs automatically.</p>
+          ) : null}
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="text-[var(--muted)]">
               <tr>
@@ -165,7 +181,7 @@ export default function DashboardPage() {
               {!applications.length ? (
                 <tr>
                   <td className="px-5 py-8 text-[var(--muted)]" colSpan={5}>
-                    No applications yet. The daily watcher will collect Lahore software-house jobs automatically.
+                    No applications yet. Daily automation will send CVs automatically.
                   </td>
                 </tr>
               ) : null}

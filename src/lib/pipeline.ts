@@ -147,7 +147,7 @@ export async function processJob(
   }
 
   const recency = evaluateJobRecency(job);
-  if (!recency.recent && job.source !== "pakistan-houses") {
+  if (!recency.recent && job.source !== "pakistan-houses" && job.source !== "remote-houses") {
     const match = await JobMatch.findOneAndUpdate(
       { jobId: job._id },
       {
@@ -245,11 +245,14 @@ export async function processJob(
   let reason = keyword.reason;
   let method: "rules" | "ai" | "hybrid" = "rules";
 
-  if (job.source === "pakistan-houses") {
+  if (job.source === "pakistan-houses" || job.source === "remote-houses") {
     score = Math.max(score, 80);
     relevant = true;
     if (!matchedSkills.length) matchedSkills = settings.skills.slice(0, 5);
-    reason = "Lahore software-house full-stack application.";
+    reason =
+      job.source === "pakistan-houses"
+        ? "Lahore software-house full-stack application."
+        : "Remote company-site full-stack application.";
   }
 
   if (keyword.relevant && process.env.AI_API_KEY) {
@@ -456,12 +459,14 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
       const { fetchPakistanJobs } = await import("@/lib/ingest/pakistanJobs");
       const { fetchAggregatorJobs } = await import("@/lib/ingest/aggregators");
       const { fetchPakistanSoftwareHouses } = await import("@/lib/ingest/pakistanHouses");
+      const { fetchRemoteSoftwareHouses } = await import("@/lib/ingest/remoteHouses");
       const incoming = [
         ...(await fetchPakistanSoftwareHouses()),
-        ...(await fetchPakistanJobs(options?.limit || 50)),
-        ...(await fetchAggregatorJobs(options?.limit || 40)),
-        ...(await fetchRemoteOkJobs(options?.limit || 40)),
-        ...(await fetchPublicBoardJobs(options?.limit || 40)),
+        ...(await fetchRemoteSoftwareHouses()),
+        ...(await fetchPakistanJobs(options?.limit || 30)),
+        ...(await fetchAggregatorJobs(options?.limit || 20)),
+        ...(await fetchRemoteOkJobs(options?.limit || 20)),
+        ...(await fetchPublicBoardJobs(options?.limit || 20)),
       ];
       for (const job of incoming) {
         await upsertIncomingJob(job);
@@ -475,33 +480,36 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
     }
   }
 
-  const fresh = await Job.find({ status: "new" }).limit(300);
-  const jobs = [...fresh]
-    .sort((left, right) => {
-      const leftRank = locationPriority(classifyLocation(left, settings).class);
-      const rightRank = locationPriority(classifyLocation(right, settings).class);
-      if (leftRank !== rightRank) return leftRank - rightRank;
-      const leftTime = new Date(left.postedAt || left.collectedAt || 0).getTime();
-      const rightTime = new Date(right.postedAt || right.collectedAt || 0).getTime();
-      return rightTime - leftTime;
-    })
-    .slice(0, options?.limit || 80);
-  for (const job of jobs) {
-    try {
-      const result = await processJob(String(job._id), settings);
-      results.push({ jobId: String(job._id), ...result });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      await SystemLog.create({
-        level: "error",
-        message: "Job processing failed",
-        context: { jobId: String(job._id), error: message },
-      });
-      results.push({ jobId: String(job._id), status: "failed", reason: message });
+  await ensureDailyQuotas(settings, results);
+
+  if ((await sentTodayCount()) < DAILY_SEND_TARGET) {
+    const fresh = await Job.find({ status: "new" }).limit(200);
+    const jobs = [...fresh]
+      .sort((left, right) => {
+        const leftRank = locationPriority(classifyLocation(left, settings).class);
+        const rightRank = locationPriority(classifyLocation(right, settings).class);
+        if (leftRank !== rightRank) return leftRank - rightRank;
+        const leftTime = new Date(left.postedAt || left.collectedAt || 0).getTime();
+        const rightTime = new Date(right.postedAt || right.collectedAt || 0).getTime();
+        return rightTime - leftTime;
+      })
+      .slice(0, options?.limit || 40);
+    for (const job of jobs) {
+      if ((await sentTodayCount()) >= DAILY_SEND_TARGET) break;
+      try {
+        const result = await processJob(String(job._id), settings, { fillQuota: true });
+        results.push({ jobId: String(job._id), ...result });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await SystemLog.create({
+          level: "error",
+          message: "Job processing failed",
+          context: { jobId: String(job._id), error: message },
+        });
+        results.push({ jobId: String(job._id), status: "failed", reason: message });
+      }
     }
   }
-
-  await ensureDailyQuotas(settings, results);
 
   return {
     processed: results.length,
@@ -534,49 +542,34 @@ async function ensureDailyQuotas(
   results: Array<{ jobId: string; status: string; score?: number; reason?: string }>,
 ) {
   const { fetchPakistanSoftwareHouses } = await import("@/lib/ingest/pakistanHouses");
+  const { fetchRemoteSoftwareHouses } = await import("@/lib/ingest/remoteHouses");
   try {
-    for (const job of await fetchPakistanSoftwareHouses()) {
+    for (const job of [
+      ...(await fetchPakistanSoftwareHouses()),
+      ...(await fetchRemoteSoftwareHouses()),
+    ]) {
       await upsertIncomingJob(job);
     }
   } catch {
-    // House pages can fail; fallback emails still let quota jobs send.
+    // Company pages can fail; fallback careers@ emails still let quota jobs send.
   }
 
   const houseJobs = await Job.find({
-    source: "pakistan-houses",
+    source: { $in: ["pakistan-houses", "remote-houses"] },
     status: { $in: ["new", "matched", "processed"] },
-  }).limit(40);
-
-  for (const job of houseJobs) {
-    const total = await sentTodayCount();
-    const lahore = await sentTodayLahoreCount(settings);
-    if (total >= DAILY_SEND_TARGET || lahore >= LAHORE_DAILY_SEND_MAX) break;
-    try {
-      const result = await processJob(String(job._id), settings, { fillQuota: true });
-      results.push({ jobId: String(job._id), ...result });
-    } catch (error) {
-      results.push({
-        jobId: String(job._id),
-        status: "failed",
-        reason: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  if ((await sentTodayCount()) >= DAILY_SEND_TARGET) return;
-
-  const matches = await JobMatch.find({ relevant: true, rejected: false }).limit(80);
-  const retryJobs = await Job.find({
-    _id: { $in: matches.map((item) => item.jobId) },
-    status: { $in: ["new", "matched", "processed"] },
+  }).limit(60);
+  const lahoreFirst = [...houseJobs].sort((left, right) => {
+    const leftLahore = left.source === "pakistan-houses" ? 0 : 1;
+    const rightLahore = right.source === "pakistan-houses" ? 0 : 1;
+    return leftLahore - rightLahore;
   });
 
-  for (const job of retryJobs) {
+  for (const job of lahoreFirst) {
     const total = await sentTodayCount();
     const lahore = await sentTodayLahoreCount(settings);
     if (total >= DAILY_SEND_TARGET) break;
-    const locationClass = classifyLocation(job, settings).class;
-    const isLahore = locationClass === "lahore-onsite" || locationClass === "lahore-remote";
+    const isLahore = job.source === "pakistan-houses";
+    if (isLahore && lahore >= LAHORE_DAILY_SEND_MAX) continue;
     const lahoreNeeded = Math.max(0, LAHORE_DAILY_SEND_MIN - lahore);
     if (!isLahore && DAILY_SEND_TARGET - total <= lahoreNeeded) continue;
     try {

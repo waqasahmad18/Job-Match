@@ -8,10 +8,12 @@ export function StatCard({
   hint?: string;
 }) {
   return (
-    <article className="panel p-5">
-      <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">{label}</p>
-      <p className="mt-3 text-3xl font-semibold">{value}</p>
-      {hint ? <p className="mt-2 text-sm text-[var(--muted)]">{hint}</p> : null}
+    <article className="panel min-w-0 p-4 sm:p-5">
+      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--muted)] sm:text-xs sm:tracking-[0.16em]">
+        {label}
+      </p>
+      <p className="mt-2 break-words text-2xl font-semibold sm:mt-3 sm:text-3xl">{value}</p>
+      {hint ? <p className="mt-2 text-xs leading-5 text-[var(--muted)] sm:text-sm">{hint}</p> : null}
     </article>
   );
 }

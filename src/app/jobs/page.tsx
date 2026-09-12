@@ -111,9 +111,9 @@ export default function JobsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-5 sm:space-y-6">
       <header>
-        <h2 className="text-3xl font-semibold">Jobs</h2>
+        <h2 className="text-2xl font-semibold sm:text-3xl">Jobs</h2>
         <p className="mt-2 text-sm text-[var(--muted)]">
           Pakistan is the priority: remote Pakistan and onsite/hybrid Lahore. Indeed and LinkedIn block automated login,
           so paste the job post here. The tool reads the description, picks the hiring email, and sends your CV.
@@ -130,7 +130,7 @@ export default function JobsPage() {
         />
         <button
           disabled={sending}
-          className="w-fit rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#1b1406] disabled:opacity-60"
+          className="min-h-11 w-full rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#1b1406] disabled:opacity-60 sm:w-fit"
         >
           {sending ? "Sending CV..." : "Read listing and send CV"}
         </button>
@@ -163,7 +163,27 @@ export default function JobsPage() {
 
       {message ? <p className="text-sm text-[var(--muted)]">{message}</p> : null}
 
-      <div className="panel overflow-x-auto">
+      <div className="space-y-3 md:hidden">
+        {visible.map((job) => (
+          <article key={job._id} className="panel p-4">
+            <button className="w-full text-left" onClick={() => setSelected(job)}>
+              <p className="font-medium">{job.title}</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">{job.company} · {job.location}</p>
+            </button>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className={statusTone(job.status)}>
+                {job.status} · Score {job.match?.score ?? "—"}
+              </span>
+              <button onClick={() => processOne(job._id)} className="min-h-11 text-[var(--accent-2)]">
+                Process
+              </button>
+            </div>
+          </article>
+        ))}
+        {!visible.length ? <div className="panel p-6 text-sm text-[var(--muted)]">No jobs in this filter.</div> : null}
+      </div>
+
+      <div className="panel hidden overflow-x-auto md:block">
         <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="text-[var(--muted)]">
             <tr>
