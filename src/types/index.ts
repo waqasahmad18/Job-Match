@@ -54,6 +54,8 @@ export type SerializedApplication = {
   matchId?: string;
   cvId?: string;
   status: ApplicationStatus;
+  companyName?: string;
+  jobTitle?: string;
   emailTo?: string;
   emailSubject?: string;
   emailBody?: string;
@@ -83,6 +85,7 @@ export type UserSettings = {
   skills: string[];
   matchThreshold: number;
   dailySendLimit: number;
+  minSalaryPkr: number;
   cooldownDays: number;
   autoSend: boolean;
   applicantName: string;

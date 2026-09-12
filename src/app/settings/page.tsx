@@ -13,7 +13,8 @@ const EMPTY: UserSettings = {
   onsiteCities: [],
   skills: [],
   matchThreshold: 80,
-  dailySendLimit: 20,
+  dailySendLimit: 50,
+  minSalaryPkr: 80000,
   cooldownDays: 14,
   autoSend: true,
   applicantName: "",
@@ -107,7 +108,11 @@ export default function SettingsPage() {
           </label>
           <label className="grid gap-2 text-sm">
             Daily send limit
-            <input type="number" min={1} max={100} className="rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2" value={settings.dailySendLimit} onChange={(e) => setSettings({ ...settings, dailySendLimit: Number(e.target.value) })} />
+            <input type="number" min={1} max={200} className="rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2" value={settings.dailySendLimit} onChange={(e) => setSettings({ ...settings, dailySendLimit: Number(e.target.value) })} />
+          </label>
+          <label className="grid gap-2 text-sm">
+            Minimum salary (PKR)
+            <input type="number" min={0} step={1000} className="rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2" value={settings.minSalaryPkr} onChange={(e) => setSettings({ ...settings, minSalaryPkr: Number(e.target.value) })} />
           </label>
           <label className="grid gap-2 text-sm">
             Company cooldown days

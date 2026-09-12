@@ -22,6 +22,7 @@ export async function analyzeJobWithAi(
 Reject or score very low if the actual work is primarily WordPress, Shopify, Elementor or WooCommerce.
 Never recommend applying to excluded companies: ${(settings.excludedCompanies || []).join(", ") || "Interact Global"}.
 Location rules: apply to remote jobs worldwide and remote jobs in Pakistan. Apply to onsite/hybrid jobs only if they are in Lahore, Pakistan. Reject onsite jobs in other cities.
+Skip the job if the stated starting salary is below 80000 PKR. There is no maximum salary cap.
 Candidate skills: ${settings.skills.join(", ")}
 Preferred roles: ${settings.roles.join(", ")}
 Locations: ${settings.locations.join(", ")}

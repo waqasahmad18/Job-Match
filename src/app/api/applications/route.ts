@@ -2,15 +2,31 @@ import { connectMongo, hasMongoUri } from "@/lib/mongodb";
 import { Application, JobMatch } from "@/models";
 import { NextResponse } from "next/server";
 
-export async function GET() {
+function pakistanDayRange(dateValue: string) {
+  const start = new Date(`${dateValue}T00:00:00+05:00`);
+  const end = new Date(`${dateValue}T23:59:59.999+05:00`);
+  return { start, end };
+}
+
+export async function GET(request: Request) {
   if (!hasMongoUri()) {
     return NextResponse.json({ applications: [], mongoConnected: false });
   }
 
   await connectMongo();
-  const applications = await Application.find()
+  const { searchParams } = new URL(request.url);
+  const date = searchParams.get("date");
+  const status = searchParams.get("status") || undefined;
+  const query: Record<string, unknown> = {};
+  if (status) query.status = status;
+  if (date) {
+    const { start, end } = pakistanDayRange(date);
+    query.createdAt = { $gte: start, $lte: end };
+  }
+
+  const applications = await Application.find(query)
     .sort({ createdAt: -1 })
-    .limit(80)
+    .limit(200)
     .populate("jobId")
     .populate("cvId")
     .lean();
@@ -29,6 +45,8 @@ export async function GET() {
         _id: String(item._id),
         jobId: job && "_id" in job ? String(job._id) : String(item.jobId),
         status: item.status,
+        companyName: item.companyName || (job && "company" in job ? job.company : undefined),
+        jobTitle: item.jobTitle || (job && "title" in job ? job.title : undefined),
         emailTo: item.emailTo,
         emailSubject: item.emailSubject,
         emailBody: item.emailBody,

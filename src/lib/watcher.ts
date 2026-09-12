@@ -1,4 +1,4 @@
-const INTERVAL_MS = Number(process.env.WATCH_INTERVAL_MINUTES || 20) * 60 * 1000;
+const INTERVAL_MS = Number(process.env.WATCH_INTERVAL_MINUTES || 360) * 60 * 1000;
 
 let started = false;
 

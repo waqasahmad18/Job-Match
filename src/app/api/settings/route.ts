@@ -30,6 +30,7 @@ export async function PUT(request: Request) {
     "skills",
     "matchThreshold",
     "dailySendLimit",
+    "minSalaryPkr",
     "cooldownDays",
     "autoSend",
     "applicantName",

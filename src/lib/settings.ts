@@ -31,6 +31,7 @@ export function toUserSettings(doc?: Record<string, unknown> | null): UserSettin
     skills: (doc?.skills as string[]) || DEFAULT_SETTINGS.skills,
     matchThreshold: Number(doc?.matchThreshold ?? DEFAULT_SETTINGS.matchThreshold),
     dailySendLimit: Number(doc?.dailySendLimit ?? DEFAULT_SETTINGS.dailySendLimit),
+    minSalaryPkr: Number(doc?.minSalaryPkr ?? DEFAULT_SETTINGS.minSalaryPkr),
     cooldownDays: Number(doc?.cooldownDays ?? DEFAULT_SETTINGS.cooldownDays),
     autoSend: doc?.autoSend !== false,
     applicantName: String(doc?.applicantName || DEFAULT_SETTINGS.applicantName),

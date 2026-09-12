@@ -65,17 +65,26 @@ export function generateApplicationEmail(input: {
   job: { title: string; company: string };
   matchedSkills: string[];
 }) {
-  const name = input.settings.applicantName || "the applicant";
-  const skills = input.matchedSkills.slice(0, 5).join(", ") || "full-stack development";
-  const subject = `Application for ${input.job.title} at ${input.job.company}`;
-  const body = `Hello ${input.job.company} hiring team,
+  const name = input.settings.applicantName || "Waqas Rafique";
+  const email = input.settings.applicantEmail || "vickyksr2218@gmail.com";
+  const skills = input.matchedSkills.slice(0, 6).join(", ") || "React, Next.js, TypeScript, Node.js and Laravel";
+  const subject = `Application for ${input.job.title} — ${name}, Full Stack Developer`;
+  const body = `Dear Hiring Team at ${input.job.company},
 
-I am applying for the ${input.job.title} role. My background covers ${skills}, and I am a strong match for this position based on the job description.
+I hope you are well.
 
-I have attached the most relevant CV. I would welcome the chance to discuss how I can contribute.
+I am writing to apply for the ${input.job.title} role. I am a Full Stack Web Developer with more than four years of experience building production web applications.
 
-Best regards,
-${name}`;
+My recent work covers React.js, Next.js, TypeScript, Node.js, Laravel, MySQL and MongoDB, including SaaS, healthcare and HR platforms. This position appears to be a strong match with my experience in ${skills}.
+
+Please find my CV attached for your review. I would be grateful for the opportunity to discuss how I can support your team.
+
+Kind regards,
+${name}
+Full Stack Web Developer
+Johar Town, Lahore
+${email}
+0322-4188759`;
 
   return { subject, body };
 }

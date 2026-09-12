@@ -4,6 +4,7 @@ import { generateApplicationEmail, sendApplicationEmail, smtpConfigured } from "
 import { analyzeJobWithAi } from "@/lib/matching/ai";
 import { evaluateHardReject } from "@/lib/matching/exclusions";
 import { evaluateLocationPolicy } from "@/lib/matching/location";
+import { evaluateMinimumSalary } from "@/lib/matching/salary";
 import { scoreJobByKeywords } from "@/lib/matching/keywordScore";
 import { selectCvVersion } from "@/lib/matching/selectCv";
 import { getOrCreateSettings } from "@/lib/settings";
@@ -68,11 +69,18 @@ async function logDecision(input: {
   matchId?: unknown;
   cvId?: unknown;
   status: ApplicationStatus;
+  companyName?: string;
+  jobTitle?: string;
   reason?: string;
   emailTo?: string;
   emailSubject?: string;
   emailBody?: string;
 }) {
+  if (!input.companyName || !input.jobTitle) {
+    const job = await Job.findById(input.jobId).select("company title");
+    input.companyName = input.companyName || job?.company;
+    input.jobTitle = input.jobTitle || job?.title;
+  }
   return Application.create(input);
 }
 
@@ -105,6 +113,36 @@ export async function processJob(jobId: string, settings: UserSettings) {
       reason: location.reason,
     });
     return { status: "rejected", score: 0, reason: location.reason };
+  }
+
+  const salary = evaluateMinimumSalary(
+    `${job.title} ${job.location} ${job.description} ${(job.tags || []).join(" ")}`,
+    settings.minSalaryPkr || 80_000,
+  );
+  if (!salary.allowed) {
+    const match = await JobMatch.findOneAndUpdate(
+      { jobId: job._id },
+      {
+        score: 0,
+        relevant: false,
+        matchedSkills: [],
+        missingSkills: [],
+        reason: salary.reason,
+        rejected: true,
+        rejectReason: salary.reason,
+        method: "rules",
+      },
+      { upsert: true, new: true },
+    );
+    job.status = "rejected";
+    await job.save();
+    await logDecision({
+      jobId: job._id,
+      matchId: match._id,
+      status: "rejected",
+      reason: salary.reason,
+    });
+    return { status: "rejected", score: 0, reason: salary.reason };
   }
 
   const exclusion = evaluateHardReject({
@@ -327,8 +365,12 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
 
   if (options?.ingest !== false) {
     const { fetchRemoteOkJobs } = await import("@/lib/ingest/remoteok");
+    const { fetchPublicBoardJobs } = await import("@/lib/ingest/publicBoards");
     try {
-      const incoming = await fetchRemoteOkJobs(options?.limit || 30);
+      const incoming = [
+        ...(await fetchRemoteOkJobs(options?.limit || 40)),
+        ...(await fetchPublicBoardJobs(options?.limit || 40)),
+      ];
       for (const job of incoming) {
         await Job.updateOne({ fingerprint: job.fingerprint }, { $setOnInsert: job }, { upsert: true });
       }
@@ -341,7 +383,7 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
     }
   }
 
-  const jobs = await Job.find({ status: "new" }).limit(options?.limit || 25);
+  const jobs = await Job.find({ status: "new" }).limit(options?.limit || 40);
   for (const job of jobs) {
     try {
       const result = await processJob(String(job._id), settings);

@@ -10,6 +10,8 @@ const ApplicationSchema = new Schema(
       enum: ["sent", "skipped", "rejected", "duplicate", "failed", "ready"],
       required: true,
     },
+    companyName: { type: String },
+    jobTitle: { type: String },
     emailTo: { type: String },
     emailSubject: { type: String },
     emailBody: { type: String },
