@@ -44,6 +44,8 @@ export const DEFAULT_EXCLUSIONS = [
 ];
 
 export const RECENT_JOB_MAX_DAYS = Number(process.env.RECENT_JOB_MAX_DAYS || 14);
+export const DAILY_SEND_TARGET = Number(process.env.DAILY_SEND_LIMIT || 20);
+export const LAHORE_DAILY_SEND_MIN = Number(process.env.LAHORE_DAILY_SEND_MIN || 5);
 export const LAHORE_DAILY_SEND_MAX = Number(process.env.LAHORE_DAILY_SEND_MAX || 10);
 
 export const DEFAULT_LOCATIONS = [
@@ -65,7 +67,7 @@ export const DEFAULT_SETTINGS = {
   onsiteCities: DEFAULT_ONSITE_CITIES,
   skills: DEFAULT_TECHNOLOGIES,
   matchThreshold: Number(process.env.MATCH_THRESHOLD || 80),
-  dailySendLimit: Number(process.env.DAILY_SEND_LIMIT || 50),
+  dailySendLimit: Number(process.env.DAILY_SEND_LIMIT || 20),
   minSalaryPkr: 80_000,
   cooldownDays: 14,
   autoSend: true,

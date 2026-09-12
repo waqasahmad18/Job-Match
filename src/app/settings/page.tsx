@@ -88,7 +88,7 @@ export default function SettingsPage() {
       <header>
         <h2 className="text-3xl font-semibold">Settings</h2>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          Recent posts only (last 14 days). Apply to Lahore onsite (5–10 CVs a day), Lahore remote, and worldwide remote.
+          Daily quota: 5–10 Lahore full-stack CVs and 20 companies total including worldwide remote.
           Other-city onsite is skipped. Interact Global is skipped.
         </p>
       </header>

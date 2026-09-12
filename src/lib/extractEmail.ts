@@ -8,6 +8,18 @@ const IGNORED_HOSTS = [
   "cloudflare.com",
   "schema.org",
 ];
+const IGNORED_LOCAL = /^(support|noreply|no-reply|billing|privacy|legal|security|mailer|notifications|unsubscribe|webmaster)/i;
+const JOB_BOARD_HOSTS = [
+  "jobicy.com",
+  "remotive.com",
+  "remoteok.com",
+  "arbeitnow.com",
+  "himalayas.app",
+  "themuse.com",
+  "linkedin.com",
+  "indeed.com",
+  "glassdoor.com",
+];
 
 export async function extractApplyEmailFromListing(
   job: { description?: string; sourceUrl?: string },
@@ -15,7 +27,7 @@ export async function extractApplyEmailFromListing(
 ) {
   const fromText = extractApplyEmail(`${job.description || ""} ${job.sourceUrl || ""}`, skipEmails);
   if (fromText) return fromText;
-  if (!job.sourceUrl || job.sourceUrl.startsWith("mailto:")) return fromText;
+  if (!job.sourceUrl || job.sourceUrl.startsWith("mailto:")) return fallbackApplyEmail(job.sourceUrl);
 
   try {
     const response = await fetch(job.sourceUrl, {
@@ -26,12 +38,15 @@ export async function extractApplyEmailFromListing(
       signal: AbortSignal.timeout(8000),
       cache: "no-store",
     });
-    if (!response.ok) return null;
-    const html = await response.text();
-    return extractApplyEmail(html.replace(/<[^>]+>/g, " "), skipEmails);
+    if (response.ok) {
+      const html = await response.text();
+      const fromPage = extractApplyEmail(html.replace(/<[^>]+>/g, " "), skipEmails);
+      if (fromPage) return fromPage;
+    }
   } catch {
-    return null;
+    // Fall through to a company-domain careers@ address.
   }
+  return fallbackApplyEmail(job.sourceUrl);
 }
 
 export function extractApplyEmail(text: string, skipEmails: string[] = []) {
@@ -43,13 +58,26 @@ export function extractApplyEmail(text: string, skipEmails: string[] = []) {
     unique.find((email) => {
       const host = email.split("@")[1] || "";
       if (skip.has(email)) return false;
+      if (IGNORED_LOCAL.test(email.split("@")[0] || "")) return false;
       if (IGNORED_HOSTS.some((item) => host.endsWith(item))) return false;
       return /^(jobs|careers|hr|apply|talent|recruiting|people|hello|contact|info)/.test(email);
     }) ||
     unique.find((email) => {
       const host = email.split("@")[1] || "";
-      return !skip.has(email) && !IGNORED_HOSTS.some((item) => host.endsWith(item));
+      const local = email.split("@")[0] || "";
+      return !skip.has(email) && !IGNORED_LOCAL.test(local) && !IGNORED_HOSTS.some((item) => host.endsWith(item));
     }) ||
     null
   );
+}
+
+export function fallbackApplyEmail(sourceUrl?: string) {
+  if (!sourceUrl) return null;
+  try {
+    const host = new URL(sourceUrl).hostname.replace(/^www\./, "").toLowerCase();
+    if (!host || JOB_BOARD_HOSTS.some((item) => host === item || host.endsWith(`.${item}`))) return null;
+    return `careers@${host}`;
+  } catch {
+    return null;
+  }
 }

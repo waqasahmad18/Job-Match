@@ -99,7 +99,12 @@ export type UserSettings = {
 export type DashboardStats = {
   jobsToday: number;
   relevantJobs: number;
+  relevantWaitingEmail: number;
   applicationsSent: number;
+  sentToday: number;
+  lahoreToday: number;
+  dailyTarget: number;
+  lahoreTarget: string;
   ignoredRejected: number;
   matchThreshold: number;
   mongoConnected: boolean;

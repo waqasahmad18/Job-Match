@@ -1,5 +1,5 @@
 import { getMasterCv } from "@/lib/cvStore";
-import { extractApplyEmailFromListing } from "@/lib/extractEmail";
+import { extractApplyEmailFromListing, fallbackApplyEmail } from "@/lib/extractEmail";
 import { generateApplicationEmail, sendApplicationEmail, smtpConfigured } from "@/lib/email";
 import { analyzeJobWithAi } from "@/lib/matching/ai";
 import { evaluateHardReject } from "@/lib/matching/exclusions";
@@ -7,7 +7,7 @@ import { classifyLocation, evaluateLocationPolicy, locationPriority } from "@/li
 import { evaluateJobRecency } from "@/lib/matching/recency";
 import { evaluateMinimumSalary } from "@/lib/matching/salary";
 import { scoreJobByKeywords } from "@/lib/matching/keywordScore";
-import { LAHORE_DAILY_SEND_MAX } from "@/lib/constants";
+import { DAILY_SEND_TARGET, LAHORE_DAILY_SEND_MAX, LAHORE_DAILY_SEND_MIN } from "@/lib/constants";
 import { startOfPakistanDay } from "@/lib/pakistanDay";
 import { selectCvVersion } from "@/lib/matching/selectCv";
 import { getOrCreateSettings } from "@/lib/settings";
@@ -53,21 +53,37 @@ async function companyOnCooldown(company: string, cooldownDays: number) {
   );
 }
 
-async function sentTodayCount() {
+export async function sentTodayCount() {
   return Application.countDocuments({
     status: { $in: ["sent", "ready"] },
     createdAt: { $gte: startOfPakistanDay() },
   });
 }
 
-async function sentTodayLahoreOnsiteCount(settings: UserSettings) {
+export async function sentTodayLahoreCount(settings: UserSettings) {
   const apps = await Application.find({
     status: { $in: ["sent", "ready"] },
     createdAt: { $gte: startOfPakistanDay() },
   }).select("jobId");
   if (!apps.length) return 0;
   const jobs = await Job.find({ _id: { $in: apps.map((item) => item.jobId) } });
-  return jobs.filter((job) => classifyLocation(job, settings).class === "lahore-onsite").length;
+  return jobs.filter((job) => {
+    const locationClass = classifyLocation(job, settings).class;
+    return locationClass === "lahore-onsite" || locationClass === "lahore-remote";
+  }).length;
+}
+
+async function sentToCompanyToday(company: string) {
+  const companyJobs = await Job.find({
+    company: new RegExp(`^${company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
+  }).select("_id");
+  return Boolean(
+    await Application.exists({
+      jobId: { $in: companyJobs.map((item) => item._id) },
+      status: { $in: ["sent", "ready"] },
+      createdAt: { $gte: startOfPakistanDay() },
+    }),
+  );
 }
 
 function mongoCvId(cv: { _id?: unknown } | null) {
@@ -95,7 +111,11 @@ async function logDecision(input: {
   return Application.create(input);
 }
 
-export async function processJob(jobId: string, settings: UserSettings) {
+export async function processJob(
+  jobId: string,
+  settings: UserSettings,
+  options?: { fillQuota?: boolean },
+) {
   const job = await Job.findById(jobId);
   if (!job) throw new Error("Job not found");
 
@@ -127,7 +147,7 @@ export async function processJob(jobId: string, settings: UserSettings) {
   }
 
   const recency = evaluateJobRecency(job);
-  if (!recency.recent) {
+  if (!recency.recent && job.source !== "pakistan-houses") {
     const match = await JobMatch.findOneAndUpdate(
       { jobId: job._id },
       {
@@ -225,6 +245,13 @@ export async function processJob(jobId: string, settings: UserSettings) {
   let reason = keyword.reason;
   let method: "rules" | "ai" | "hybrid" = "rules";
 
+  if (job.source === "pakistan-houses") {
+    score = Math.max(score, 80);
+    relevant = true;
+    if (!matchedSkills.length) matchedSkills = settings.skills.slice(0, 5);
+    reason = "Lahore software-house full-stack application.";
+  }
+
   if (keyword.relevant && process.env.AI_API_KEY) {
     try {
       const ai = await analyzeJobWithAi(job, settings);
@@ -281,14 +308,19 @@ export async function processJob(jobId: string, settings: UserSettings) {
     return { status: "duplicate", score, reason: "Duplicate application prevented." };
   }
 
-  if (await companyOnCooldown(job.company, settings.cooldownDays)) {
+  const coolingDown = options?.fillQuota
+    ? await sentToCompanyToday(job.company)
+    : await companyOnCooldown(job.company, settings.cooldownDays);
+  if (coolingDown) {
     job.status = "processed";
     await job.save();
     await logDecision({
       jobId: job._id,
       matchId: match._id,
       status: "skipped",
-      reason: `Company cooldown of ${settings.cooldownDays} days is active.`,
+      reason: options?.fillQuota
+        ? "Already sent a CV to this company today."
+        : `Company cooldown of ${settings.cooldownDays} days is active.`,
     });
     return { status: "skipped", score, reason: "Company cooldown." };
   }
@@ -307,8 +339,9 @@ export async function processJob(jobId: string, settings: UserSettings) {
   }
 
   const locationClass = classifyLocation(job, settings).class;
-  if (locationClass === "lahore-onsite") {
-    const lahoreToday = await sentTodayLahoreOnsiteCount(settings);
+  const isLahore = locationClass === "lahore-onsite" || locationClass === "lahore-remote";
+  if (isLahore) {
+    const lahoreToday = await sentTodayLahoreCount(settings);
     if (lahoreToday >= LAHORE_DAILY_SEND_MAX) {
       job.status = "matched";
       await job.save();
@@ -316,13 +349,15 @@ export async function processJob(jobId: string, settings: UserSettings) {
         jobId: job._id,
         matchId: match._id,
         status: "skipped",
-        reason: `Daily Lahore onsite cap of ${LAHORE_DAILY_SEND_MAX} reached.`,
+        reason: `Daily Lahore cap of ${LAHORE_DAILY_SEND_MAX} reached.`,
       });
-      return { status: "skipped", score, reason: "Daily Lahore onsite cap reached." };
+      return { status: "skipped", score, reason: "Daily Lahore cap reached." };
     }
   }
 
-  const hiringEmail = await extractApplyEmailFromListing(job, [settings.applicantEmail]);
+  const hiringEmail =
+    (await extractApplyEmailFromListing(job, [settings.applicantEmail])) ||
+    fallbackApplyEmail(job.sourceUrl);
   if (!hiringEmail) {
     job.status = "matched";
     await job.save();
@@ -429,7 +464,7 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
         ...(await fetchPublicBoardJobs(options?.limit || 40)),
       ];
       for (const job of incoming) {
-        await Job.updateOne({ fingerprint: job.fingerprint }, { $setOnInsert: job }, { upsert: true });
+        await upsertIncomingJob(job);
       }
     } catch (error) {
       await SystemLog.create({
@@ -466,10 +501,93 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
     }
   }
 
+  await ensureDailyQuotas(settings, results);
+
   return {
     processed: results.length,
     smtpReady: smtpConfigured(settings),
     aiReady: Boolean(process.env.AI_API_KEY),
+    sentToday: await sentTodayCount(),
+    lahoreToday: await sentTodayLahoreCount(settings),
+    dailyTarget: DAILY_SEND_TARGET,
+    lahoreTarget: `${LAHORE_DAILY_SEND_MIN}-${LAHORE_DAILY_SEND_MAX}`,
     results,
   };
+}
+
+async function upsertIncomingJob(job: Record<string, unknown> & { fingerprint: string; description?: string; location?: string; postedAt?: Date }) {
+  const existing = await Job.findOne({ fingerprint: job.fingerprint });
+  if (!existing) {
+    await Job.create(job);
+    return;
+  }
+  if (existing.status === "sent") return;
+  existing.description = String(job.description || existing.description);
+  existing.location = String(job.location || existing.location);
+  existing.status = "new";
+  if (job.postedAt) existing.postedAt = job.postedAt;
+  await existing.save();
+}
+
+async function ensureDailyQuotas(
+  settings: UserSettings,
+  results: Array<{ jobId: string; status: string; score?: number; reason?: string }>,
+) {
+  const { fetchPakistanSoftwareHouses } = await import("@/lib/ingest/pakistanHouses");
+  try {
+    for (const job of await fetchPakistanSoftwareHouses()) {
+      await upsertIncomingJob(job);
+    }
+  } catch {
+    // House pages can fail; fallback emails still let quota jobs send.
+  }
+
+  const houseJobs = await Job.find({
+    source: "pakistan-houses",
+    status: { $in: ["new", "matched", "processed"] },
+  }).limit(40);
+
+  for (const job of houseJobs) {
+    const total = await sentTodayCount();
+    const lahore = await sentTodayLahoreCount(settings);
+    if (total >= DAILY_SEND_TARGET || lahore >= LAHORE_DAILY_SEND_MAX) break;
+    try {
+      const result = await processJob(String(job._id), settings, { fillQuota: true });
+      results.push({ jobId: String(job._id), ...result });
+    } catch (error) {
+      results.push({
+        jobId: String(job._id),
+        status: "failed",
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  if ((await sentTodayCount()) >= DAILY_SEND_TARGET) return;
+
+  const matches = await JobMatch.find({ relevant: true, rejected: false }).limit(80);
+  const retryJobs = await Job.find({
+    _id: { $in: matches.map((item) => item.jobId) },
+    status: { $in: ["new", "matched", "processed"] },
+  });
+
+  for (const job of retryJobs) {
+    const total = await sentTodayCount();
+    const lahore = await sentTodayLahoreCount(settings);
+    if (total >= DAILY_SEND_TARGET) break;
+    const locationClass = classifyLocation(job, settings).class;
+    const isLahore = locationClass === "lahore-onsite" || locationClass === "lahore-remote";
+    const lahoreNeeded = Math.max(0, LAHORE_DAILY_SEND_MIN - lahore);
+    if (!isLahore && DAILY_SEND_TARGET - total <= lahoreNeeded) continue;
+    try {
+      const result = await processJob(String(job._id), settings, { fillQuota: true });
+      results.push({ jobId: String(job._id), ...result });
+    } catch (error) {
+      results.push({
+        jobId: String(job._id),
+        status: "failed",
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 }

@@ -34,13 +34,15 @@ export default function DashboardPage() {
       const res = await fetch("/api/pipeline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ingest: true, limit: 20 }),
+        body: JSON.stringify({ ingest: true, limit: 80 }),
       });
       const data = await res.json();
       if (!res.ok) {
         setMessage(data.error || "Pipeline failed.");
       } else {
-        setMessage(`Processed ${data.processed} jobs. AI ${data.aiReady ? "on" : "off"}, SMTP ${data.smtpReady ? "on" : "off"}.`);
+        setMessage(
+          `Processed ${data.processed} jobs. Sent today ${data.sentToday ?? 0}/${data.dailyTarget ?? 20} (Lahore ${data.lahoreToday ?? 0}). SMTP ${data.smtpReady ? "on" : "off"}.`,
+        );
         await load();
       }
     } catch {
@@ -74,10 +76,23 @@ export default function DashboardPage() {
 
       {message ? <p className="text-sm text-[var(--muted)]">{message}</p> : null}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard label="Jobs found today" value={stats?.jobsToday ?? "—"} />
-        <StatCard label="Relevant jobs" value={stats?.relevantJobs ?? "—"} />
-        <StatCard label="Applications sent" value={stats?.applicationsSent ?? "—"} hint="Includes ready-to-send" />
+        <StatCard
+          label="Relevant jobs"
+          value={stats?.relevantJobs ?? "—"}
+          hint={`${stats?.relevantWaitingEmail ?? 0} had no hiring email, so a CV could not go`}
+        />
+        <StatCard
+          label="CVs sent today"
+          value={`${stats?.sentToday ?? 0}/${stats?.dailyTarget ?? 20}`}
+          hint={`Target 20 companies. All-time sent: ${stats?.applicationsSent ?? 0}`}
+        />
+        <StatCard
+          label="Lahore sent today"
+          value={`${stats?.lahoreToday ?? 0}/${stats?.lahoreTarget ?? "5-10"}`}
+          hint="Lahore onsite + Lahore remote"
+        />
         <StatCard label="Ignored / rejected" value={stats?.ignoredRejected ?? "—"} />
         <StatCard label="Match threshold" value={`${stats?.matchThreshold ?? settings?.matchThreshold ?? 80}%`} />
       </section>
@@ -86,9 +101,8 @@ export default function DashboardPage() {
         <article className="panel p-5">
           <h3 className="text-lg font-semibold">Apply rules</h3>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Daily automation: Vercel at 8:00 AM Pakistan time, plus a local watcher every 6 hours if this PC is on.
-            It looks for recent posts (last 14 days) and sends 5–10 Lahore onsite CVs first, then Lahore remote
-            and worldwide remote when a hiring email is in the listing. Indeed/Glassdoor login walls are not scraped.
+            Daily must-send: 5–10 Lahore full-stack CVs and 20 companies total (Lahore onsite, Lahore remote,
+            worldwide remote). Vercel runs at 8:00 AM Pakistan time. Indeed/Glassdoor login walls are not scraped.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             {(settings?.locations || ["Remote worldwide", "Remote Pakistan", "Onsite Lahore only"]).map((item) => (

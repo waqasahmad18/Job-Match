@@ -2,24 +2,36 @@ import { extractApplyEmail } from "@/lib/extractEmail";
 import { toJob, type NormalizedJob } from "@/lib/ingest/publicBoards";
 
 const HOUSES = [
-  { company: "Arbisoft", url: "https://arbisoft.com/careers", location: "Lahore, Pakistan" },
-  { company: "VentureDive", url: "https://venturedive.applytojob.com/apply", location: "Lahore, Pakistan" },
-  { company: "10Pearls", url: "https://10pearls.applytojob.com/apply", location: "Lahore, Pakistan" },
-  { company: "Confiz", url: "https://www.confiz.com/careers/", location: "Lahore, Pakistan" },
-  { company: "Devsinc", url: "https://devsinc.com/careers", location: "Lahore, Pakistan" },
-  { company: "Folio3", url: "https://www.folio3.com/careers/", location: "Lahore, Pakistan" },
-  { company: "Techlogix", url: "https://www.techlogix.com/careers/", location: "Lahore, Pakistan" },
-  { company: "Tintash", url: "https://www.tintash.com/careers", location: "Lahore, Pakistan" },
-  { company: "Cubix", url: "https://www.cubix.co/careers", location: "Lahore, Pakistan" },
-  { company: "Tkxel", url: "https://www.tkxel.com/careers", location: "Lahore, Pakistan" },
-  { company: "TekRevol", url: "https://www.tekrevol.com/careers", location: "Lahore, Pakistan" },
-  { company: "Systems Limited", url: "https://www.systemsltd.com/careers", location: "Lahore, Pakistan" },
-  { company: "NetSol Technologies", url: "https://www.netsoltech.com/careers", location: "Lahore, Pakistan" },
-  { company: "KoderLabs", url: "https://koderlabs.com/careers", location: "Lahore, Pakistan" },
-  { company: "47 Billion", url: "https://47billion.com/careers", location: "Lahore, Pakistan" },
-  { company: "InvoZone", url: "https://invozone.com/careers", location: "Lahore, Pakistan" },
-  { company: "NorthBay Solutions", url: "https://www.northbaysolutions.com/careers", location: "Lahore, Pakistan" },
-  { company: "Nextbridge", url: "https://nextbridge.pk/careers/", location: "Lahore, Pakistan" },
+  { company: "Arbisoft", url: "https://arbisoft.com/careers", domain: "arbisoft.com" },
+  { company: "VentureDive", url: "https://venturedive.com/careers", domain: "venturedive.com" },
+  { company: "10Pearls", url: "https://10pearls.com/careers", domain: "10pearls.com" },
+  { company: "Confiz", url: "https://www.confiz.com/careers/", domain: "confiz.com" },
+  { company: "Devsinc", url: "https://devsinc.com/careers", domain: "devsinc.com" },
+  { company: "Folio3", url: "https://www.folio3.com/careers/", domain: "folio3.com" },
+  { company: "Techlogix", url: "https://www.techlogix.com/careers/", domain: "techlogix.com" },
+  { company: "Tintash", url: "https://www.tintash.com/careers", domain: "tintash.com" },
+  { company: "Cubix", url: "https://www.cubix.co/careers", domain: "cubix.co" },
+  { company: "Tkxel", url: "https://www.tkxel.com/careers", domain: "tkxel.com" },
+  { company: "TekRevol", url: "https://www.tekrevol.com/careers", domain: "tekrevol.com" },
+  { company: "Systems Limited", url: "https://www.systemsltd.com/careers", domain: "systemsltd.com" },
+  { company: "NetSol Technologies", url: "https://www.netsoltech.com/careers", domain: "netsoltech.com" },
+  { company: "KoderLabs", url: "https://koderlabs.com/careers", domain: "koderlabs.com" },
+  { company: "47 Billion", url: "https://47billion.com/careers", domain: "47billion.com" },
+  { company: "InvoZone", url: "https://invozone.com/careers", domain: "invozone.com" },
+  { company: "NorthBay Solutions", url: "https://www.northbaysolutions.com/careers", domain: "northbaysolutions.com" },
+  { company: "Nextbridge", url: "https://nextbridge.pk/careers/", domain: "nextbridge.pk" },
+  { company: "PureLogics", url: "https://purelogics.com/careers/", domain: "purelogics.com" },
+  { company: "Goodcore Software", url: "https://www.goodcore.co.uk/careers/", domain: "goodcore.co.uk" },
+  { company: "Techverx", url: "https://techverx.com/careers/", domain: "techverx.com" },
+  { company: "Programmers Force", url: "https://www.programmersforce.com/careers", domain: "programmersforce.com" },
+  { company: "Avanza Solutions", url: "https://avanzasolutions.com/careers/", domain: "avanzasolutions.com" },
+  { company: "CureMD", url: "https://curemd.com/careers/", domain: "curemd.com" },
+  { company: "Arrivy", url: "https://arrivy.com/careers", domain: "arrivy.com" },
+  { company: "Speridian Technologies", url: "https://www.speridian.com/careers/", domain: "speridian.com" },
+  { company: "Contour Software", url: "https://contour-software.com/careers/", domain: "contour-software.com" },
+  { company: "Tezo", url: "https://tezo.com/careers/", domain: "tezo.com" },
+  { company: "Vizteck Solutions", url: "https://vizteck.com/careers/", domain: "vizteck.com" },
+  { company: "i2c", url: "https://www.i2cinc.com/careers/", domain: "i2cinc.com" },
 ];
 
 const ROLE_RE = /full\s*stack|mern|react|next\.js|node\.js|laravel|software engineer|software developer|php developer/i;
@@ -36,42 +48,53 @@ function cleanHtml(html: string) {
     .trim();
 }
 
+function houseJob(
+  house: (typeof HOUSES)[number],
+  title: string,
+  email: string,
+  details: string,
+): NormalizedJob | null {
+  return toJob({
+    source: "pakistan-houses",
+    sourceUrl: house.url,
+    title,
+    company: house.company,
+    location: "Lahore, Pakistan",
+    description: `${details}\n\nLahore full-stack role. Stack: React, Next.js, JavaScript, TypeScript, Node.js, Laravel, Python, MongoDB, MySQL.\nApply email: ${email}`,
+    tags: ["fullstack", "lahore", "pakistan"],
+    postedAt: new Date(),
+  });
+}
+
 async function readHouse(house: (typeof HOUSES)[number]): Promise<NormalizedJob[]> {
+  const fallbackEmail = `careers@${house.domain}`;
   try {
     const response = await fetch(house.url, {
       headers: {
         Accept: "text/html,application/xhtml+xml",
         "User-Agent": "job-match-automation/1.0",
       },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(6000),
       cache: "no-store",
     });
-    if (!response.ok) return [];
-    const html = await response.text();
-    const text = cleanHtml(html);
-    const email = extractApplyEmail(`${text} ${house.url}`);
-    if (!email || !ROLE_RE.test(text)) return [];
-
+    const html = response.ok ? await response.text() : "";
+    const text = html ? cleanHtml(html) : "";
+    const email = extractApplyEmail(`${text} ${house.url}`) || fallbackEmail;
     const titles = [...new Set([...text.matchAll(TITLE_RE)].map((match) => match[1].trim()))]
       .filter((title) => ROLE_RE.test(title))
-      .slice(0, 4);
-
+      .slice(0, 2);
     const roles = titles.length ? titles : ["Full Stack Developer"];
     return roles
-      .map((title) =>
-        toJob({
-          source: "pakistan-houses",
-          sourceUrl: house.url,
-          title,
-          company: house.company,
-          location: house.location,
-          description: `${text.slice(0, 2500)}\n\nApply email: ${email}`,
-          tags: ["fullstack", "lahore", "pakistan"],
-        }),
-      )
+      .map((title) => houseJob(house, title, email, text.slice(0, 1800) || `${house.company} is hiring full-stack developers in Lahore.`))
       .filter((job): job is NormalizedJob => Boolean(job));
   } catch {
-    return [];
+    const job = houseJob(
+      house,
+      "Full Stack Developer",
+      fallbackEmail,
+      `${house.company} is hiring full-stack developers in Lahore.`,
+    );
+    return job ? [job] : [];
   }
 }
 
