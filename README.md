@@ -1,6 +1,6 @@
 # Job Match
 
-Private job-matching tool. It collects software jobs, scores the description, skips Interact Global, and emails Waqas Rafique's CV when a job is a strong match.
+Private job-matching tool. It collects recent software jobs (last 14 days), scores the description, skips Interact Global, and emails Waqas Rafique's CV when a job is a strong match. Daily target: 5–10 Lahore onsite applications first, then Lahore remote and worldwide remote.
 
 ## Local
 
@@ -30,4 +30,6 @@ Set these in the Vercel project before deploy. Do not commit `.env.local`.
 - `AUTH_USERNAME_HASH`
 - `AUTH_PASSWORD_HASH`
 - `CRON_SECRET`
-- `WATCH_INTERVAL_MINUTES` = `20`
+- `WATCH_INTERVAL_MINUTES` = `360`
+- `RECENT_JOB_MAX_DAYS` = `14`
+- `LAHORE_DAILY_SEND_MAX` = `10`

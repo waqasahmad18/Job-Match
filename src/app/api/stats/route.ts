@@ -1,6 +1,7 @@
 import { getOrCreateSettings } from "@/lib/settings";
 import { pingMongo } from "@/lib/mongodb";
 import { Application, Job, JobMatch } from "@/models";
+import { startOfPakistanDay } from "@/lib/pakistanDay";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -17,8 +18,7 @@ export async function GET() {
   }
 
   const { settings } = await getOrCreateSettings();
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
+  const start = startOfPakistanDay();
 
   const [jobsToday, relevantJobs, applicationsSent, ignoredRejected] = await Promise.all([
     Job.countDocuments({ collectedAt: { $gte: start } }),

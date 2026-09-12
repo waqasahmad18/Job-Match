@@ -86,7 +86,9 @@ export default function DashboardPage() {
         <article className="panel p-5">
           <h3 className="text-lg font-semibold">Apply rules</h3>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Watcher checks for new postings every 20 minutes. CV goes to the job&apos;s hiring email.
+            Daily automation: Vercel at 8:00 AM Pakistan time, plus a local watcher every 6 hours if this PC is on.
+            It looks for recent posts (last 14 days) and sends 5–10 Lahore onsite CVs first, then Lahore remote
+            and worldwide remote when a hiring email is in the listing. Indeed/Glassdoor login walls are not scraped.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             {(settings?.locations || ["Remote worldwide", "Remote Pakistan", "Onsite Lahore only"]).map((item) => (
@@ -126,6 +128,7 @@ export default function DashboardPage() {
                 <th className="px-5 py-3 font-medium">Job</th>
                 <th className="px-5 py-3 font-medium">Score</th>
                 <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium">Email / draft</th>
                 <th className="px-5 py-3 font-medium">When</th>
               </tr>
             </thead>
@@ -138,13 +141,17 @@ export default function DashboardPage() {
                   </td>
                   <td className="px-5 py-3">{item.score ?? "—"}</td>
                   <td className={`px-5 py-3 capitalize ${statusTone(item.status)}`}>{item.status}</td>
+                  <td className="px-5 py-3 text-[var(--muted)]">
+                    <div>{item.emailTo || "—"}</div>
+                    <div className="max-w-xs truncate">{item.emailSubject || item.reason || ""}</div>
+                  </td>
                   <td className="px-5 py-3 text-[var(--muted)]">{formatDate(item.createdAt)}</td>
                 </tr>
               ))}
               {!applications.length ? (
                 <tr>
-                  <td className="px-5 py-8 text-[var(--muted)]" colSpan={4}>
-                    No applications yet. Run the collector after MongoDB is connected.
+                  <td className="px-5 py-8 text-[var(--muted)]" colSpan={5}>
+                    No applications yet. The daily watcher will collect Lahore software-house jobs automatically.
                   </td>
                 </tr>
               ) : null}

@@ -11,14 +11,12 @@ function todayPakistan() {
 export default function ApplicationsPage() {
   const [date, setDate] = useState(todayPakistan());
   const [applications, setApplications] = useState<SerializedApplication[]>([]);
-  const [selected, setSelected] = useState<SerializedApplication | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function load(selectedDate: string) {
     setLoading(true);
-    const data = await fetch(`/api/applications?status=sent&date=${selectedDate}`).then((res) => res.json());
+    const data = await fetch(`/api/applications?status=sent,ready&date=${selectedDate}`).then((res) => res.json());
     setApplications(data.applications || []);
-    setSelected(null);
     setLoading(false);
   }
 
@@ -26,7 +24,7 @@ export default function ApplicationsPage() {
     load(date).catch(() => setLoading(false));
   }, [date]);
 
-  const sentCount = applications.length;
+  const sentCount = applications.filter((item) => item.status === "sent").length;
   const uniqueCompanies = useMemo(
     () => new Set(applications.map((item) => item.companyName || item.job?.company).filter(Boolean)).size,
     [applications],
@@ -35,9 +33,9 @@ export default function ApplicationsPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <header>
-        <h2 className="text-3xl font-semibold">Sent CVs</h2>
+        <h2 className="text-3xl font-semibold">Sent CVs & email drafts</h2>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          Company name, hiring email, and the draft that was sent. Pick a date to review that day.
+          Har company ko jo mail CV ke sath gayi, uska poora draft yahan hai — subject, hiring email, aur body.
         </p>
       </header>
 
@@ -64,56 +62,54 @@ export default function ApplicationsPage() {
         </div>
       </div>
 
-      <div className="panel overflow-x-auto">
-        <table className="w-full min-w-[980px] text-left text-sm">
-          <thead className="text-[var(--muted)]">
-            <tr>
-              <th className="px-5 py-3 font-medium">Company</th>
-              <th className="px-5 py-3 font-medium">Role</th>
-              <th className="px-5 py-3 font-medium">Email sent to</th>
-              <th className="px-5 py-3 font-medium">CV</th>
-              <th className="px-5 py-3 font-medium">Score</th>
-              <th className="px-5 py-3 font-medium">Time</th>
-            </tr>
-          </thead>
-          <tbody>
-            {applications.map((item) => (
-              <tr key={item._id} className="border-t border-[var(--line)]">
-                <td className="px-5 py-3">
-                  <button className="text-left font-medium" onClick={() => setSelected(item)}>
-                    {item.companyName || item.job?.company || "Company"}
-                  </button>
-                </td>
-                <td className="px-5 py-3">{item.jobTitle || item.job?.title || "—"}</td>
-                <td className="px-5 py-3 text-[var(--accent-2)]">{item.emailTo || "—"}</td>
-                <td className="px-5 py-3">{item.cvName || "Master CV"}</td>
-                <td className={`px-5 py-3 ${statusTone("sent")}`}>{item.score ?? "—"}</td>
-                <td className="px-5 py-3 text-[var(--muted)]">{formatDate(item.createdAt)}</td>
-              </tr>
-            ))}
-            {!applications.length && !loading ? (
-              <tr>
-                <td className="px-5 py-8 text-[var(--muted)]" colSpan={6}>
-                  No CVs were sent on this date.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
+      <div className="space-y-4">
+        {applications.map((item) => (
+          <article key={item._id} className="panel space-y-3 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--accent)]">
+                  {item.status === "sent" ? "Sent with CV" : "Draft ready"}
+                </p>
+                <h3 className="mt-1 text-xl font-semibold">
+                  {item.companyName || item.job?.company || "Company"}
+                </h3>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  {item.jobTitle || item.job?.title || "Role"} · {formatDate(item.createdAt)}
+                  {item.score != null ? ` · Score ${item.score}` : ""}
+                </p>
+              </div>
+              <span className={`capitalize ${statusTone(item.status)}`}>{item.status}</span>
+            </div>
+            <div className="grid gap-2 rounded-xl border border-[var(--line)] bg-[var(--panel-2)] p-4 text-sm">
+              <p>
+                <span className="text-[var(--muted)]">To: </span>
+                <span className="text-[var(--accent-2)]">{item.emailTo || "No hiring email stored"}</span>
+              </p>
+              <p>
+                <span className="text-[var(--muted)]">Subject: </span>
+                {item.emailSubject || "—"}
+              </p>
+              <p>
+                <span className="text-[var(--muted)]">CV: </span>
+                {item.cvName || "Waqas Rafique Full Stack CV"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Email sent with the CV</p>
+              {item.emailBody ? (
+                <pre className="mt-2 whitespace-pre-wrap rounded-xl border border-[var(--line)] bg-[var(--panel-2)] p-4 text-sm leading-7">
+                  {item.emailBody}
+                </pre>
+              ) : (
+                <p className="mt-2 text-sm text-[var(--muted)]">Is application ke liye draft save nahi hua.</p>
+              )}
+            </div>
+          </article>
+        ))}
+        {!applications.length && !loading ? (
+          <div className="panel p-8 text-sm text-[var(--muted)]">Is date pe koi sent CV ya draft nahi mila.</div>
+        ) : null}
       </div>
-
-      {selected ? (
-        <article className="panel p-5">
-          <h3 className="text-xl font-semibold">{selected.companyName || selected.job?.company}</h3>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            {selected.jobTitle || selected.job?.title} · {selected.emailTo || "No email stored"}
-          </p>
-          {selected.emailSubject ? <p className="mt-3 text-sm font-medium">{selected.emailSubject}</p> : null}
-          {selected.emailBody ? (
-            <pre className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[var(--muted)]">{selected.emailBody}</pre>
-          ) : null}
-        </article>
-      ) : null}
     </div>
   );
 }

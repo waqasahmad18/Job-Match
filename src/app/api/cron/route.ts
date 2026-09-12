@@ -19,6 +19,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await runPipeline({ ingest: true, limit: 25 });
+  const result = await runPipeline({ ingest: true, limit: 80 });
   return NextResponse.json(result);
 }

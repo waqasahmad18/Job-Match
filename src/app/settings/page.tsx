@@ -88,7 +88,8 @@ export default function SettingsPage() {
       <header>
         <h2 className="text-3xl font-semibold">Settings</h2>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          Remote worldwide / remote Pakistan apply automatically. Onsite only in Lahore. Interact Global is skipped.
+          Recent posts only (last 14 days). Apply to Lahore onsite (5–10 CVs a day), Lahore remote, and worldwide remote.
+          Other-city onsite is skipped. Interact Global is skipped.
         </p>
       </header>
 

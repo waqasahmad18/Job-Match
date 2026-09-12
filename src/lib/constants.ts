@@ -43,10 +43,13 @@ export const DEFAULT_EXCLUSIONS = [
   "Shopify Liquid",
 ];
 
+export const RECENT_JOB_MAX_DAYS = Number(process.env.RECENT_JOB_MAX_DAYS || 14);
+export const LAHORE_DAILY_SEND_MAX = Number(process.env.LAHORE_DAILY_SEND_MAX || 10);
+
 export const DEFAULT_LOCATIONS = [
-  "Remote worldwide",
-  "Remote Pakistan",
-  "Onsite Lahore only",
+  "Lahore onsite first (5-10/day)",
+  "Lahore remote",
+  "Worldwide remote (recent posts)",
 ];
 
 export const DEFAULT_EXCLUDED_COMPANIES = ["Interact Global"];

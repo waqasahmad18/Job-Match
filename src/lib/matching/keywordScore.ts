@@ -22,12 +22,17 @@ export function scoreJobByKeywords(
   const missingSkills = skills.filter((skill) => !matchedSkills.includes(skill)).slice(0, 6);
 
   const roleHits = includesAny(haystack, settings.roles);
-  const remoteOrLahore =
-    /remote|worldwide|anywhere|pakistan|lahore/.test(haystack);
+  const lahoreRemote = /lahore/.test(haystack) && /remote|wfh|work from home/.test(haystack);
+  const lahoreOnsite = /lahore/.test(haystack) && !lahoreRemote;
+  const remoteAnywhere = /remote|worldwide|anywhere/.test(haystack);
+  const strongTitle =
+    /full stack|fullstack|mern|react|next\.js|node\.js|laravel|django|typescript/.test(
+      job.title.toLowerCase(),
+    );
 
-  const skillScore = Math.min(70, matchedSkills.length * 8);
-  const roleScore = roleHits.length ? 20 : job.title.toLowerCase().includes("software") ? 12 : 0;
-  const locationScore = remoteOrLahore ? 10 : 0;
+  const skillScore = Math.min(70, matchedSkills.length * 12);
+  const roleScore = roleHits.length || strongTitle ? 20 : job.title.toLowerCase().includes("software") ? 12 : 0;
+  const locationScore = lahoreOnsite ? 18 : lahoreRemote ? 16 : remoteAnywhere ? 10 : 0;
   const score = Math.min(99, skillScore + roleScore + locationScore);
 
   const relevant = score >= 55 && matchedSkills.length >= 2;

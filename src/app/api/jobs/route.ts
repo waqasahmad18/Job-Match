@@ -1,5 +1,8 @@
 import { jobFingerprint } from "@/lib/fingerprint";
+import { parsePastedJob } from "@/lib/ingest/parseJobPaste";
 import { connectMongo, hasMongoUri } from "@/lib/mongodb";
+import { getOrCreateSettings } from "@/lib/settings";
+import { processJob } from "@/lib/pipeline";
 import { Job, JobMatch } from "@/models";
 import { NextResponse } from "next/server";
 
@@ -43,13 +46,15 @@ export async function POST(request: Request) {
   }
   await connectMongo();
   const body = await request.json();
-  const title = String(body.title || "").trim();
-  const company = String(body.company || "").trim();
-  const sourceUrl = String(body.sourceUrl || "").trim();
-  const description = String(body.description || "").trim();
+  const pasted = String(body.pastedText || "").trim() ? parsePastedJob(String(body.pastedText)) : null;
+  const title = String(body.title || pasted?.title || "").trim();
+  const company = String(body.company || pasted?.company || "").trim();
+  const sourceUrl = String(body.sourceUrl || "").trim() || `manual://${encodeURIComponent(title)}`;
+  const description = String(body.description || pasted?.description || "").trim();
+  const location = String(body.location || pasted?.location || "Lahore, Pakistan").trim();
 
-  if (!title || !company || !sourceUrl || !description) {
-    return NextResponse.json({ error: "Title, company, URL and description are required." }, { status: 400 });
+  if (!title || !company || !description) {
+    return NextResponse.json({ error: "Title, company and description are required." }, { status: 400 });
   }
 
   const fingerprint = jobFingerprint({
@@ -64,12 +69,12 @@ export async function POST(request: Request) {
     { fingerprint },
     {
       $setOnInsert: {
-        source: body.source || "manual",
+        source: body.source || (pasted ? "pakistan-paste" : "manual"),
         externalId: body.externalId,
-        sourceUrl,
+        sourceUrl: sourceUrl.startsWith("http") ? sourceUrl : `manual://${encodeURIComponent(title)}`,
         title,
         company,
-        location: body.location || "Remote",
+        location,
         description,
         tags: Array.isArray(body.tags) ? body.tags : [],
         fingerprint,
@@ -79,6 +84,12 @@ export async function POST(request: Request) {
     },
     { upsert: true, new: true },
   );
+
+  if (body.processNow) {
+    const { settings } = await getOrCreateSettings();
+    const result = await processJob(String(job._id), settings);
+    return NextResponse.json({ job, result });
+  }
 
   return NextResponse.json({ job });
 }

@@ -34,8 +34,11 @@ const SOFTWARE_HINTS = [
 export function normalizeRemoteOkJob(raw: RemoteOkJob) {
   const title = raw.position?.trim();
   const company = raw.company?.trim();
-  const sourceUrl = (raw.url || raw.apply_url || "").trim();
-  const description = (raw.description || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const applyUrl = (raw.apply_url || "").trim();
+  const sourceUrl = (raw.url || applyUrl).trim();
+  const description = `${(raw.description || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")} ${
+    applyUrl.startsWith("mailto:") ? applyUrl : ""
+  }`.trim();
 
   if (!title || !company || !sourceUrl || !description) return null;
 

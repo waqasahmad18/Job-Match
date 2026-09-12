@@ -1,11 +1,14 @@
 import { getMasterCv } from "@/lib/cvStore";
-import { extractApplyEmail } from "@/lib/extractEmail";
+import { extractApplyEmailFromListing } from "@/lib/extractEmail";
 import { generateApplicationEmail, sendApplicationEmail, smtpConfigured } from "@/lib/email";
 import { analyzeJobWithAi } from "@/lib/matching/ai";
 import { evaluateHardReject } from "@/lib/matching/exclusions";
-import { evaluateLocationPolicy } from "@/lib/matching/location";
+import { classifyLocation, evaluateLocationPolicy, locationPriority } from "@/lib/matching/location";
+import { evaluateJobRecency } from "@/lib/matching/recency";
 import { evaluateMinimumSalary } from "@/lib/matching/salary";
 import { scoreJobByKeywords } from "@/lib/matching/keywordScore";
+import { LAHORE_DAILY_SEND_MAX } from "@/lib/constants";
+import { startOfPakistanDay } from "@/lib/pakistanDay";
 import { selectCvVersion } from "@/lib/matching/selectCv";
 import { getOrCreateSettings } from "@/lib/settings";
 import { Application, CvVersion, EmailLog, Job, JobMatch, SystemLog } from "@/models";
@@ -51,12 +54,20 @@ async function companyOnCooldown(company: string, cooldownDays: number) {
 }
 
 async function sentTodayCount() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
   return Application.countDocuments({
     status: { $in: ["sent", "ready"] },
-    createdAt: { $gte: start },
+    createdAt: { $gte: startOfPakistanDay() },
   });
+}
+
+async function sentTodayLahoreOnsiteCount(settings: UserSettings) {
+  const apps = await Application.find({
+    status: { $in: ["sent", "ready"] },
+    createdAt: { $gte: startOfPakistanDay() },
+  }).select("jobId");
+  if (!apps.length) return 0;
+  const jobs = await Job.find({ _id: { $in: apps.map((item) => item.jobId) } });
+  return jobs.filter((job) => classifyLocation(job, settings).class === "lahore-onsite").length;
 }
 
 function mongoCvId(cv: { _id?: unknown } | null) {
@@ -113,6 +124,33 @@ export async function processJob(jobId: string, settings: UserSettings) {
       reason: location.reason,
     });
     return { status: "rejected", score: 0, reason: location.reason };
+  }
+
+  const recency = evaluateJobRecency(job);
+  if (!recency.recent) {
+    const match = await JobMatch.findOneAndUpdate(
+      { jobId: job._id },
+      {
+        score: 0,
+        relevant: false,
+        matchedSkills: [],
+        missingSkills: [],
+        reason: recency.reason,
+        rejected: true,
+        rejectReason: recency.reason,
+        method: "rules",
+      },
+      { upsert: true, new: true },
+    );
+    job.status = "rejected";
+    await job.save();
+    await logDecision({
+      jobId: job._id,
+      matchId: match._id,
+      status: "rejected",
+      reason: recency.reason,
+    });
+    return { status: "rejected", score: 0, reason: recency.reason };
   }
 
   const salary = evaluateMinimumSalary(
@@ -268,10 +306,23 @@ export async function processJob(jobId: string, settings: UserSettings) {
     return { status: "skipped", score, reason: "Daily send limit reached." };
   }
 
-  const hiringEmail = extractApplyEmail(
-    `${job.description} ${job.sourceUrl}`,
-    [settings.applicantEmail],
-  );
+  const locationClass = classifyLocation(job, settings).class;
+  if (locationClass === "lahore-onsite") {
+    const lahoreToday = await sentTodayLahoreOnsiteCount(settings);
+    if (lahoreToday >= LAHORE_DAILY_SEND_MAX) {
+      job.status = "matched";
+      await job.save();
+      await logDecision({
+        jobId: job._id,
+        matchId: match._id,
+        status: "skipped",
+        reason: `Daily Lahore onsite cap of ${LAHORE_DAILY_SEND_MAX} reached.`,
+      });
+      return { status: "skipped", score, reason: "Daily Lahore onsite cap reached." };
+    }
+  }
+
+  const hiringEmail = await extractApplyEmailFromListing(job, [settings.applicantEmail]);
   if (!hiringEmail) {
     job.status = "matched";
     await job.save();
@@ -367,7 +418,13 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
     const { fetchRemoteOkJobs } = await import("@/lib/ingest/remoteok");
     const { fetchPublicBoardJobs } = await import("@/lib/ingest/publicBoards");
     try {
+      const { fetchPakistanJobs } = await import("@/lib/ingest/pakistanJobs");
+      const { fetchAggregatorJobs } = await import("@/lib/ingest/aggregators");
+      const { fetchPakistanSoftwareHouses } = await import("@/lib/ingest/pakistanHouses");
       const incoming = [
+        ...(await fetchPakistanSoftwareHouses()),
+        ...(await fetchPakistanJobs(options?.limit || 50)),
+        ...(await fetchAggregatorJobs(options?.limit || 40)),
         ...(await fetchRemoteOkJobs(options?.limit || 40)),
         ...(await fetchPublicBoardJobs(options?.limit || 40)),
       ];
@@ -383,7 +440,17 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
     }
   }
 
-  const jobs = await Job.find({ status: "new" }).limit(options?.limit || 40);
+  const fresh = await Job.find({ status: "new" }).limit(300);
+  const jobs = [...fresh]
+    .sort((left, right) => {
+      const leftRank = locationPriority(classifyLocation(left, settings).class);
+      const rightRank = locationPriority(classifyLocation(right, settings).class);
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      const leftTime = new Date(left.postedAt || left.collectedAt || 0).getTime();
+      const rightTime = new Date(right.postedAt || right.collectedAt || 0).getTime();
+      return rightTime - leftTime;
+    })
+    .slice(0, options?.limit || 80);
   for (const job of jobs) {
     try {
       const result = await processJob(String(job._id), settings);

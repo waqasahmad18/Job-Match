@@ -19,7 +19,7 @@ const SOFTWARE_HINTS = [
   "developer",
 ];
 
-type NormalizedJob = {
+export type NormalizedJob = {
   source: string;
   externalId?: string;
   sourceUrl: string;
@@ -35,7 +35,15 @@ type NormalizedJob = {
 };
 
 function clean(value: string) {
-  return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function isSoftware(title: string, tags: string[]) {
@@ -43,7 +51,7 @@ function isSoftware(title: string, tags: string[]) {
   return SOFTWARE_HINTS.some((hint) => text.includes(hint));
 }
 
-function toJob(input: {
+export function toJob(input: {
   source: string;
   externalId?: string;
   sourceUrl: string;

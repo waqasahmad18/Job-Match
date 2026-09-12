@@ -10,7 +10,7 @@ export function startJobWatcher() {
     if (!process.env.MONGODB_URI) return;
     try {
       const { runPipeline } = await import("@/lib/pipeline");
-      const result = await runPipeline({ ingest: true, limit: 30 });
+      const result = await runPipeline({ ingest: true, limit: 80 });
       console.log(`[job-watcher] processed ${result.processed} jobs`);
     } catch (error) {
       console.error("[job-watcher]", error);

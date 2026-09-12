@@ -18,7 +18,10 @@ export async function GET(request: Request) {
   const date = searchParams.get("date");
   const status = searchParams.get("status") || undefined;
   const query: Record<string, unknown> = {};
-  if (status) query.status = status;
+  if (status) {
+    const statuses = status.split(",").map((item) => item.trim()).filter(Boolean);
+    query.status = statuses.length > 1 ? { $in: statuses } : statuses[0];
+  }
   if (date) {
     const { start, end } = pakistanDayRange(date);
     query.createdAt = { $gte: start, $lte: end };

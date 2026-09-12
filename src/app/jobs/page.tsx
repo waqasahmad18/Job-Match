@@ -31,9 +31,11 @@ export default function JobsPage() {
     title: "",
     company: "",
     sourceUrl: "",
-    location: "Remote",
+    location: "Lahore, Pakistan",
     description: "",
   });
+  const [pastedText, setPastedText] = useState("");
+  const [sending, setSending] = useState(false);
 
   async function load() {
     const data = await fetch("/api/jobs").then((res) => res.json());
@@ -62,8 +64,41 @@ export default function JobsPage() {
       setMessage(data.error || "Could not save job.");
       return;
     }
-    setForm({ title: "", company: "", sourceUrl: "", location: "Remote", description: "" });
+    setForm({ title: "", company: "", sourceUrl: "", location: "Lahore, Pakistan", description: "" });
     setMessage("Job saved. Process it from the table.");
+    await load();
+  }
+
+  async function pasteAndSend(event: React.FormEvent) {
+    event.preventDefault();
+    if (!pastedText.trim()) {
+      setMessage("Paste a Pakistan job post first.");
+      return;
+    }
+    setSending(true);
+    setMessage("Reading the listing and sending CV if a hiring email is found...");
+    const res = await fetch("/api/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pastedText,
+        location: "Lahore, Pakistan",
+        source: "pakistan-paste",
+        processNow: true,
+      }),
+    });
+    const data = await res.json();
+    setSending(false);
+    if (!res.ok) {
+      setMessage(data.error || "Could not read that job post.");
+      return;
+    }
+    setPastedText("");
+    setMessage(
+      data.result
+        ? `${data.result.status}: ${data.result.reason || ""}`
+        : "Job saved from the pasted listing.",
+    );
     await load();
   }
 
@@ -80,9 +115,26 @@ export default function JobsPage() {
       <header>
         <h2 className="text-3xl font-semibold">Jobs</h2>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          Manual jobs and RemoteOK software listings are stored, then scored from the description.
+          Pakistan is the priority: remote Pakistan and onsite/hybrid Lahore. Indeed and LinkedIn block automated login,
+          so paste the job post here. The tool reads the description, picks the hiring email, and sends your CV.
         </p>
       </header>
+
+      <form className="panel grid gap-3 p-5" onSubmit={pasteAndSend}>
+        <label className="text-sm font-medium">Paste a Pakistan / Indeed / LinkedIn job post</label>
+        <textarea
+          className="min-h-40 rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2"
+          placeholder="Paste the full job description. If it includes hr@, jobs@, or careers@, the CV is sent automatically."
+          value={pastedText}
+          onChange={(e) => setPastedText(e.target.value)}
+        />
+        <button
+          disabled={sending}
+          className="w-fit rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#1b1406] disabled:opacity-60"
+        >
+          {sending ? "Sending CV..." : "Read listing and send CV"}
+        </button>
+      </form>
 
       <form className="panel grid gap-3 p-5 md:grid-cols-2" onSubmit={addJob}>
         <input className="rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2" placeholder="Job title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
