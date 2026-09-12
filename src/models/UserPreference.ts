@@ -9,7 +9,7 @@ const UserPreferenceSchema = new Schema(
     excludedCompanies: { type: [String], default: ["Interact Global"] },
     onsiteCities: { type: [String], default: ["Lahore"] },
     skills: { type: [String], default: [] },
-    matchThreshold: { type: Number, default: 80 },
+    matchThreshold: { type: Number, default: 75 },
     dailySendLimit: { type: Number, default: 50 },
     minSalaryPkr: { type: Number, default: 80000 },
     cooldownDays: { type: Number, default: 14 },

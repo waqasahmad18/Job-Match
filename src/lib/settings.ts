@@ -52,14 +52,19 @@ export async function getOrCreateSettings() {
     const companies = mergeUnique(doc.excludedCompanies, DEFAULT_SETTINGS.excludedCompanies);
     const onsiteCities = doc.onsiteCities?.length ? doc.onsiteCities : DEFAULT_SETTINGS.onsiteCities;
     const dailySendLimit = Math.max(Number(doc.dailySendLimit || 0), 20);
+    const matchThreshold = [60, 80].includes(Number(doc.matchThreshold))
+      ? 75
+      : Number(doc.matchThreshold || 75);
     if (
       companies.length !== (doc.excludedCompanies || []).length ||
       !(doc.onsiteCities || []).length ||
-      dailySendLimit !== doc.dailySendLimit
+      dailySendLimit !== doc.dailySendLimit ||
+      matchThreshold !== doc.matchThreshold
     ) {
       doc.excludedCompanies = companies;
       doc.onsiteCities = onsiteCities;
       doc.dailySendLimit = dailySendLimit;
+      doc.matchThreshold = matchThreshold;
       await doc.save();
     }
   }

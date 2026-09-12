@@ -12,7 +12,7 @@ const EMPTY: UserSettings = {
   excludedCompanies: [],
   onsiteCities: [],
   skills: [],
-  matchThreshold: 80,
+  matchThreshold: 75,
   dailySendLimit: 20,
   minSalaryPkr: 80000,
   cooldownDays: 14,

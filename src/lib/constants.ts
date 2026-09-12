@@ -66,7 +66,7 @@ export const DEFAULT_SETTINGS = {
   excludedCompanies: DEFAULT_EXCLUDED_COMPANIES,
   onsiteCities: DEFAULT_ONSITE_CITIES,
   skills: DEFAULT_TECHNOLOGIES,
-  matchThreshold: Number(process.env.MATCH_THRESHOLD || 80),
+  matchThreshold: Number(process.env.MATCH_THRESHOLD || 75),
   dailySendLimit: Number(process.env.DAILY_SEND_LIMIT || 20),
   minSalaryPkr: 80_000,
   cooldownDays: 14,

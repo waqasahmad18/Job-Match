@@ -94,7 +94,7 @@ export default function DashboardPage() {
           hint="Lahore onsite + Lahore remote"
         />
         <StatCard label="Ignored / rejected" value={stats?.ignoredRejected ?? "—"} />
-        <StatCard label="Match threshold" value={`${stats?.matchThreshold ?? settings?.matchThreshold ?? 80}%`} />
+        <StatCard label="Match threshold" value={`${stats?.matchThreshold ?? settings?.matchThreshold ?? 75}%`} />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">

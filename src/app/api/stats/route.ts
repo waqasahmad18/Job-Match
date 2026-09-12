@@ -19,7 +19,7 @@ export async function GET() {
       dailyTarget: DAILY_SEND_TARGET,
       lahoreTarget: `${LAHORE_DAILY_SEND_MIN}-${LAHORE_DAILY_SEND_MAX}`,
       ignoredRejected: 0,
-      matchThreshold: 80,
+      matchThreshold: 75,
       mongoConnected: false,
     });
   }
