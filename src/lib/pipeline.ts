@@ -7,6 +7,15 @@ import { classifyLocation, evaluateLocationPolicy, locationPriority } from "@/li
 import { evaluateJobRecency } from "@/lib/matching/recency";
 import { evaluateMinimumSalary } from "@/lib/matching/salary";
 import { scoreJobByKeywords } from "@/lib/matching/keywordScore";
+import {
+  alreadyApproachedCompany,
+  acquireLocalPipelineLock,
+  acquireMongoPipelineLock,
+  claimInFlight,
+  releaseInFlight,
+  releaseLocalPipelineLock,
+  releaseMongoPipelineLock,
+} from "@/lib/companyLock";
 import { DAILY_SEND_TARGET, LAHORE_DAILY_SEND_MAX, LAHORE_DAILY_SEND_MIN } from "@/lib/constants";
 import { startOfPakistanDay } from "@/lib/pakistanDay";
 import { selectCvVersion } from "@/lib/matching/selectCv";
@@ -20,8 +29,8 @@ async function alreadyApplied(job: {
   fingerprint: string;
 }) {
   const existing = await Application.findOne({
-    status: { $in: ["sent", "ready", "duplicate"] },
-    $or: [{ jobId: job._id }],
+    status: { $in: ["sent", "ready"] },
+    jobId: job._id,
   });
   if (existing) return existing;
 
@@ -38,20 +47,6 @@ async function alreadyApplied(job: {
   return null;
 }
 
-async function companyOnCooldown(company: string, cooldownDays: number) {
-  if (!cooldownDays) return false;
-  const since = new Date(Date.now() - cooldownDays * 24 * 60 * 60 * 1000);
-  const companyJobs = await Job.find({
-    company: new RegExp(`^${company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
-  }).select("_id");
-  return Boolean(
-    await Application.exists({
-      jobId: { $in: companyJobs.map((item) => item._id) },
-      status: "sent",
-      createdAt: { $gte: since },
-    }),
-  );
-}
 
 export async function sentTodayCount() {
   return Application.countDocuments({
@@ -73,18 +68,6 @@ export async function sentTodayLahoreCount(settings: UserSettings) {
   }).length;
 }
 
-async function sentToCompanyToday(company: string) {
-  const companyJobs = await Job.find({
-    company: new RegExp(`^${company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
-  }).select("_id");
-  return Boolean(
-    await Application.exists({
-      jobId: { $in: companyJobs.map((item) => item._id) },
-      status: { $in: ["sent", "ready"] },
-      createdAt: { $gte: startOfPakistanDay() },
-    }),
-  );
-}
 
 function mongoCvId(cv: { _id?: unknown } | null) {
   if (!cv?._id || String(cv._id) === "master-cv") return undefined;
@@ -114,7 +97,6 @@ async function logDecision(input: {
 export async function processJob(
   jobId: string,
   settings: UserSettings,
-  options?: { fillQuota?: boolean },
 ) {
   const job = await Job.findById(jobId);
   if (!job) throw new Error("Job not found");
@@ -311,21 +293,16 @@ export async function processJob(
     return { status: "duplicate", score, reason: "Duplicate application prevented." };
   }
 
-  const coolingDown = options?.fillQuota
-    ? await sentToCompanyToday(job.company)
-    : await companyOnCooldown(job.company, settings.cooldownDays);
-  if (coolingDown) {
+  if (await alreadyApproachedCompany({ company: job.company, cooldownDays: settings.cooldownDays || 14 })) {
     job.status = "processed";
     await job.save();
     await logDecision({
       jobId: job._id,
       matchId: match._id,
-      status: "skipped",
-      reason: options?.fillQuota
-        ? "Already sent a CV to this company today."
-        : `Company cooldown of ${settings.cooldownDays} days is active.`,
+      status: "duplicate",
+      reason: "This company was already approached. One company gets one CV.",
     });
-    return { status: "skipped", score, reason: "Company cooldown." };
+    return { status: "duplicate", score, reason: "Company already approached." };
   }
 
   const today = await sentTodayCount();
@@ -382,6 +359,30 @@ export async function processJob(
   });
   const to = hiringEmail;
 
+  if (await alreadyApproachedCompany({ company: job.company, email: to, cooldownDays: settings.cooldownDays || 14 })) {
+    job.status = "processed";
+    await job.save();
+    await logDecision({
+      jobId: job._id,
+      matchId: match._id,
+      status: "duplicate",
+      reason: "This company or hiring email was already approached.",
+    });
+    return { status: "duplicate", score, reason: "Company or email already approached." };
+  }
+
+  if (!claimInFlight(job.company, to)) {
+    job.status = "processed";
+    await job.save();
+    await logDecision({
+      jobId: job._id,
+      matchId: match._id,
+      status: "duplicate",
+      reason: "A send to this company is already in progress.",
+    });
+    return { status: "duplicate", score, reason: "Company send already in progress." };
+  }
+
   if (!settings.autoSend) {
     job.status = "matched";
     await job.save();
@@ -395,10 +396,22 @@ export async function processJob(
       emailBody: email.body,
       reason: "Auto-send disabled. Application prepared.",
     });
+    releaseInFlight(job.company, to);
     return { status: "ready", score, reason: "Prepared without sending." };
   }
 
   try {
+    const reservation = await logDecision({
+      jobId: job._id,
+      matchId: match._id,
+      cvId: mongoCvId(cv),
+      status: "ready",
+      emailTo: to,
+      emailSubject: email.subject,
+      emailBody: email.body,
+      reason: "Reserved so this company is not emailed twice.",
+    });
+
     const result = await sendApplicationEmail({
       to,
       subject: email.subject,
@@ -411,18 +424,11 @@ export async function processJob(
     const status: ApplicationStatus = result.sent ? "sent" : "ready";
     job.status = result.sent ? "sent" : "matched";
     await job.save();
-    const application = await logDecision({
-      jobId: job._id,
-      matchId: match._id,
-      cvId: mongoCvId(cv),
-      status,
-      emailTo: to,
-      emailSubject: email.subject,
-      emailBody: email.body,
-      reason: result.sent ? "Email sent." : result.error,
-    });
+    reservation.status = status;
+    reservation.reason = result.sent ? "Email sent." : result.error;
+    await reservation.save();
     await EmailLog.create({
-      applicationId: application._id,
+      applicationId: reservation._id,
       jobId: job._id,
       to,
       subject: email.subject,
@@ -445,11 +451,37 @@ export async function processJob(
       reason: message,
     });
     return { status: "failed", score, reason: message };
+  } finally {
+    releaseInFlight(job.company, to);
   }
 }
 
 export async function runPipeline(options?: { ingest?: boolean; limit?: number }) {
+  if (!acquireLocalPipelineLock()) {
+    return {
+      processed: 0,
+      smtpReady: false,
+      aiReady: Boolean(process.env.AI_API_KEY),
+      sentToday: await sentTodayCount(),
+      skipped: "Pipeline already running. Duplicate send blocked.",
+      results: [],
+    };
+  }
+
+  let mongoLocked = false;
+  try {
   const { settings } = await getOrCreateSettings();
+  mongoLocked = await acquireMongoPipelineLock();
+  if (!mongoLocked) {
+    return {
+      processed: 0,
+      smtpReady: smtpConfigured(settings),
+      aiReady: Boolean(process.env.AI_API_KEY),
+      sentToday: await sentTodayCount(),
+      skipped: "Another pipeline is already sending. Duplicate company mail blocked.",
+      results: [],
+    };
+  }
   const results: Array<{ jobId: string; status: string; score?: number; reason?: string }> = [];
 
   if (options?.ingest !== false) {
@@ -497,7 +529,7 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
     for (const job of jobs) {
       if ((await sentTodayCount()) >= DAILY_SEND_TARGET) break;
       try {
-        const result = await processJob(String(job._id), settings, { fillQuota: true });
+        const result = await processJob(String(job._id), settings);
         results.push({ jobId: String(job._id), ...result });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -521,6 +553,10 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
     lahoreTarget: `${LAHORE_DAILY_SEND_MIN}-${LAHORE_DAILY_SEND_MAX}`,
     results,
   };
+  } finally {
+    if (mongoLocked) await releaseMongoPipelineLock();
+    releaseLocalPipelineLock();
+  }
 }
 
 async function upsertIncomingJob(job: Record<string, unknown> & { fingerprint: string; description?: string; location?: string; postedAt?: Date }) {
@@ -573,7 +609,7 @@ async function ensureDailyQuotas(
     const lahoreNeeded = Math.max(0, LAHORE_DAILY_SEND_MIN - lahore);
     if (!isLahore && DAILY_SEND_TARGET - total <= lahoreNeeded) continue;
     try {
-      const result = await processJob(String(job._id), settings, { fillQuota: true });
+      const result = await processJob(String(job._id), settings);
       results.push({ jobId: String(job._id), ...result });
     } catch (error) {
       results.push({

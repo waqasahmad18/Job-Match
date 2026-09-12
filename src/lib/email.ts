@@ -82,7 +82,7 @@ Please find my CV attached for your review. I would be grateful for the opportun
 Kind regards,
 ${name}
 Full Stack Web Developer
-Johar Town, Lahore
+Johar Town, Lahore, Pakistan
 ${email}
 0322-4188759`;
 

@@ -80,13 +80,17 @@ async function readHouse(house: (typeof HOUSES)[number]): Promise<NormalizedJob[
     const html = response.ok ? await response.text() : "";
     const text = html ? cleanHtml(html) : "";
     const email = extractApplyEmail(`${text} ${house.url}`) || fallbackEmail;
-    const titles = [...new Set([...text.matchAll(TITLE_RE)].map((match) => match[1].trim()))]
-      .filter((title) => ROLE_RE.test(title))
-      .slice(0, 2);
-    const roles = titles.length ? titles : ["Full Stack Developer"];
-    return roles
-      .map((title) => houseJob(house, title, email, text.slice(0, 1800) || `${house.company} is hiring full-stack developers in Lahore.`))
-      .filter((job): job is NormalizedJob => Boolean(job));
+    const title =
+      [...new Set([...text.matchAll(TITLE_RE)].map((match) => match[1].trim()))].find((item) =>
+        ROLE_RE.test(item),
+      ) || "Full Stack Developer";
+    const job = houseJob(
+      house,
+      title,
+      email,
+      text.slice(0, 1800) || `${house.company} is hiring full-stack developers in Lahore.`,
+    );
+    return job ? [job] : [];
   } catch {
     const job = houseJob(
       house,
