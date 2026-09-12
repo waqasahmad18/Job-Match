@@ -2,6 +2,9 @@ import { runPipeline } from "@/lib/pipeline";
 import { hasMongoUri } from "@/lib/mongodb";
 import { NextResponse } from "next/server";
 
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 export async function POST(request: Request) {
   if (!hasMongoUri()) {
     return NextResponse.json({ error: "Set MONGODB_URI in .env.local first." }, { status: 400 });

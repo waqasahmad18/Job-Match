@@ -2,6 +2,9 @@ import { runPipeline } from "@/lib/pipeline";
 import { hasMongoUri } from "@/lib/mongodb";
 import { NextResponse } from "next/server";
 
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   if (!hasMongoUri()) {
     return NextResponse.json({ error: "MONGODB_URI is missing." }, { status: 400 });
