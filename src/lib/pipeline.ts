@@ -1,7 +1,7 @@
 import { getMasterCv, resolveCvAttachment } from "@/lib/cvStore";
 import { extractApplyEmailFromListing, fallbackApplyEmail } from "@/lib/extractEmail";
 import { syncGmailBounces } from "@/lib/gmailBounces";
-import { hiringAliases, loadBouncedEmails, pickDeliverableEmail } from "@/lib/verifyEmail";
+import { loadBouncedEmails, pickDeliverableEmail } from "@/lib/verifyEmail";
 import { generateApplicationEmail, sendApplicationEmail, smtpConfigured } from "@/lib/email";
 import { analyzeJobWithAi } from "@/lib/matching/ai";
 import { evaluateHardReject } from "@/lib/matching/exclusions";
@@ -391,16 +391,7 @@ export async function processJob(
   const skip = [settings.applicantEmail, ...bounced];
   const extracted = await extractApplyEmailFromListing(job, skip);
   const fallback = fallbackApplyEmail(job.sourceUrl, skip);
-  let sourceHost = "";
-  try {
-    sourceHost = new URL(job.sourceUrl).hostname.replace(/^www\./, "");
-  } catch {
-    sourceHost = "";
-  }
-  const hiringEmail = await pickDeliverableEmail(
-    [extracted, fallback, ...hiringAliases(extracted || fallback || sourceHost)],
-    bounced,
-  );
+  const hiringEmail = await pickDeliverableEmail([extracted, fallback], bounced);
   if (!hiringEmail) {
     job.status = "matched";
     await job.save();

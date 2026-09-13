@@ -4,6 +4,13 @@ import { rememberBouncedEmail } from "@/lib/verifyEmail";
 import { Application, Job } from "@/models";
 
 const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+function isRealMailbox(email: string) {
+  return (
+    /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(email) &&
+    !/\.(png|jpe?g|gif|svg|webp|css|js)$/i.test(email)
+  );
+}
 const BOUNCE_HINT =
   /address not found|550[- ]5\.1\.1|user unknown|does not exist|undeliverable|invalid recipient|mailbox unavailable|no such user|Delivery Status Notification/i;
 
@@ -11,15 +18,21 @@ function extractBouncedRecipients(raw: string) {
   const found = new Set<string>();
   const failed = raw.match(/X-Failed-Recipients:\s*([^\r\n]+)/gi) || [];
   for (const line of failed) {
-    for (const email of line.match(EMAIL_RE) || []) found.add(email.toLowerCase());
+    for (const email of line.match(EMAIL_RE) || []) {
+      if (isRealMailbox(email)) found.add(email.toLowerCase());
+    }
   }
   const finals = raw.match(/(?:Final|Original)-Recipient:\s*rfc822;\s*([^\s;]+)/gi) || [];
   for (const line of finals) {
-    for (const email of line.match(EMAIL_RE) || []) found.add(email.toLowerCase());
+    for (const email of line.match(EMAIL_RE) || []) {
+      if (isRealMailbox(email)) found.add(email.toLowerCase());
+    }
   }
   if (!found.size && BOUNCE_HINT.test(raw)) {
     for (const email of raw.match(EMAIL_RE) || []) {
-      if (!/googlemail|mailer-daemon|postmaster@gmail/.test(email)) found.add(email.toLowerCase());
+      if (!/googlemail|mailer-daemon|postmaster@gmail/.test(email) && isRealMailbox(email)) {
+        found.add(email.toLowerCase());
+      }
     }
   }
   return [...found];
@@ -108,15 +121,20 @@ export async function fetchGmailBounceRecipients(since = new Date(Date.now() - 3
   }
 
   await imap.command("SELECT INBOX");
-  const search = await imap.command(
-    `SEARCH SINCE ${imapSince(since)} FROM "mailer-daemon@googlemail.com"`,
-  );
-  const ids = (search.find((line) => line.startsWith("* SEARCH")) || "")
-    .replace("* SEARCH", "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(-20);
+  const sinceText = imapSince(since);
+  const searches = [
+    await imap.command(`SEARCH SINCE ${sinceText} FROM "mailer-daemon@googlemail.com"`),
+    await imap.command(`SEARCH SINCE ${sinceText} SUBJECT "Address not found"`),
+  ];
+  const ids = [...new Set(
+    searches.flatMap((search) =>
+      (search.find((line) => line.startsWith("* SEARCH")) || "")
+        .replace("* SEARCH", "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean),
+    ),
+  )].slice(-40);
 
   const recipients = new Set<string>();
   for (const id of ids) {

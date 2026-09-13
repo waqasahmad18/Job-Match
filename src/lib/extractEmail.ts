@@ -9,18 +9,6 @@ const IGNORED_HOSTS = [
   "schema.org",
 ];
 const IGNORED_LOCAL = /^(support|noreply|no-reply|billing|privacy|legal|security|mailer|notifications|unsubscribe|webmaster)/i;
-const JOB_BOARD_HOSTS = [
-  "jobicy.com",
-  "remotive.com",
-  "remoteok.com",
-  "arbeitnow.com",
-  "himalayas.app",
-  "themuse.com",
-  "linkedin.com",
-  "indeed.com",
-  "glassdoor.com",
-];
-
 export async function extractApplyEmailFromListing(
   job: { description?: string; sourceUrl?: string },
   skipEmails: string[] = [],
@@ -44,7 +32,7 @@ export async function extractApplyEmailFromListing(
       if (fromPage) return fromPage;
     }
   } catch {
-    // Fall through to a company-domain hiring address.
+    // Only a page/mailto address is used. Guessed careers@/jobs@ addresses bounce.
   }
   return fallbackApplyEmail(job.sourceUrl, skipEmails);
 }
@@ -72,14 +60,9 @@ export function extractApplyEmail(text: string, skipEmails: string[] = []) {
 }
 
 export function fallbackApplyEmail(sourceUrl?: string, skipEmails: string[] = []) {
-  if (!sourceUrl) return null;
-  try {
-    const host = new URL(sourceUrl).hostname.replace(/^www\./, "").toLowerCase();
-    if (!host || JOB_BOARD_HOSTS.some((item) => host === item || host.endsWith(`.${item}`))) return null;
-    const skip = new Set(skipEmails.map((item) => item.toLowerCase()));
-    const aliases = ["jobs", "careers", "hr", "apply", "talent", "hello"].map((local) => `${local}@${host}`);
-    return aliases.find((email) => !skip.has(email)) || null;
-  } catch {
-    return null;
-  }
+  if (!sourceUrl?.startsWith("mailto:")) return null;
+  const email = sourceUrl.slice(7).split("?")[0].toLowerCase().trim();
+  if (!email.includes("@")) return null;
+  if (skipEmails.some((item) => item.toLowerCase() === email)) return null;
+  return email;
 }

@@ -39,10 +39,17 @@ export function hiringAliases(emailOrHost: string) {
   return HIRING_LOCALS.map((local) => `${local}@${host.toLowerCase()}`);
 }
 
+export function hostAlreadyBounced(emailOrHost: string, bounced: Set<string>) {
+  const host = emailOrHost.includes("@") ? emailOrHost.split("@")[1] : emailOrHost.toLowerCase();
+  if (!host) return false;
+  return [...bounced].some((email) => email.endsWith(`@${host}`));
+}
+
 export async function pickDeliverableEmail(candidates: Array<string | null | undefined>, bounced: Set<string>) {
   const unique = [...new Set(candidates.map((item) => (item ? normalizeEmail(item) : "")).filter(Boolean))];
   for (const email of unique) {
     if (bounced.has(email)) continue;
+    if (hostAlreadyBounced(email, bounced)) continue;
     if (!(await domainHasMx(email))) continue;
     return email;
   }
