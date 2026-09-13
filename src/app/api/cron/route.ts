@@ -23,12 +23,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const ingest = new URL(request.url).searchParams.get("ingest") !== "0";
+  const url = new URL(request.url);
+  const ingest = url.searchParams.get("ingest") !== "0";
+  const sendBatch = Number(url.searchParams.get("batch") || SEND_BATCH_PER_RUN);
   const result = await runPipeline({
     ingest,
     ingestHouses: false,
-    limit: PROCESS_BATCH_PER_RUN,
-    sendBatch: SEND_BATCH_PER_RUN,
+    limit: Math.max(PROCESS_BATCH_PER_RUN, sendBatch * 2),
+    sendBatch,
   });
   return NextResponse.json(result);
 }

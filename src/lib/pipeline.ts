@@ -1,5 +1,7 @@
 import { getMasterCv, resolveCvAttachment } from "@/lib/cvStore";
 import { extractApplyEmailFromListing, fallbackApplyEmail } from "@/lib/extractEmail";
+import { syncGmailBounces } from "@/lib/gmailBounces";
+import { hiringAliases, loadBouncedEmails, pickDeliverableEmail } from "@/lib/verifyEmail";
 import { generateApplicationEmail, sendApplicationEmail, smtpConfigured } from "@/lib/email";
 import { analyzeJobWithAi } from "@/lib/matching/ai";
 import { evaluateHardReject } from "@/lib/matching/exclusions";
@@ -385,9 +387,20 @@ export async function processJob(
     return { status: "skipped", score, reason: "Daily worldwide-remote cap reached." };
   }
 
-  const hiringEmail =
-    (await extractApplyEmailFromListing(job, [settings.applicantEmail])) ||
-    fallbackApplyEmail(job.sourceUrl);
+  const bounced = await loadBouncedEmails();
+  const skip = [settings.applicantEmail, ...bounced];
+  const extracted = await extractApplyEmailFromListing(job, skip);
+  const fallback = fallbackApplyEmail(job.sourceUrl, skip);
+  let sourceHost = "";
+  try {
+    sourceHost = new URL(job.sourceUrl).hostname.replace(/^www\./, "");
+  } catch {
+    sourceHost = "";
+  }
+  const hiringEmail = await pickDeliverableEmail(
+    [extracted, fallback, ...hiringAliases(extracted || fallback || sourceHost)],
+    bounced,
+  );
   if (!hiringEmail) {
     job.status = "matched";
     await job.save();
@@ -395,9 +408,9 @@ export async function processJob(
       jobId: job._id,
       matchId: match._id,
       status: "skipped",
-      reason: "No hiring email found in the job posting.",
+      reason: "No confirmed hiring email. Bounced or guessed addresses were skipped.",
     });
-    return { status: "skipped", score, reason: "No hiring email found in the job posting." };
+    return { status: "skipped", score, reason: "No confirmed hiring email." };
   }
 
   const cvs = await CvVersion.find();
@@ -586,6 +599,7 @@ export async function runPipeline(options?: {
   }
   const results: Array<{ jobId: string; status: string; score?: number; reason?: string }> = [];
   await releaseStuckReservations();
+  const bounces = await syncGmailBounces();
   const progress: PipelineProgress = {
     sentThisRun: 0,
     sentThisRunLahore: 0,
@@ -648,6 +662,7 @@ export async function runPipeline(options?: {
     sentThisRun: progress.sentThisRun,
     lahoreTarget: LAHORE_DAILY_SEND_TARGET,
     remoteTarget: REMOTE_DAILY_SEND_TARGET,
+    bounces,
     results,
   };
   } finally {

@@ -111,8 +111,9 @@ export default function DashboardPage() {
           <h3 className="text-lg font-semibold">Apply rules</h3>
           <p className="mt-2 text-sm text-[var(--muted)]">
             Daily target stays equal: 25 Lahore (onsite + Lahore remote) and 25 worldwide remote.
-            8:00 AM starts the first wave, then later waves keep collecting and sending. Indeed/Glassdoor
-            login walls are not scraped.
+            Vercel hunts and sends at 3:00 PM Pakistan time so we can confirm the run does not stall.
+            Gmail bounce replies mark invalid addresses, then a confirmed hiring email is used to resend.
+            Indeed/Glassdoor login walls are not scraped.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             {(settings?.locations || ["Remote worldwide", "Remote Pakistan", "Onsite Lahore only"]).map((item) => (

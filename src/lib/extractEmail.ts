@@ -27,7 +27,7 @@ export async function extractApplyEmailFromListing(
 ) {
   const fromText = extractApplyEmail(`${job.description || ""} ${job.sourceUrl || ""}`, skipEmails);
   if (fromText) return fromText;
-  if (!job.sourceUrl || job.sourceUrl.startsWith("mailto:")) return fallbackApplyEmail(job.sourceUrl);
+  if (!job.sourceUrl || job.sourceUrl.startsWith("mailto:")) return fallbackApplyEmail(job.sourceUrl, skipEmails);
 
   try {
     const response = await fetch(job.sourceUrl, {
@@ -44,9 +44,9 @@ export async function extractApplyEmailFromListing(
       if (fromPage) return fromPage;
     }
   } catch {
-    // Fall through to a company-domain careers@ address.
+    // Fall through to a company-domain hiring address.
   }
-  return fallbackApplyEmail(job.sourceUrl);
+  return fallbackApplyEmail(job.sourceUrl, skipEmails);
 }
 
 export function extractApplyEmail(text: string, skipEmails: string[] = []) {
@@ -71,12 +71,14 @@ export function extractApplyEmail(text: string, skipEmails: string[] = []) {
   );
 }
 
-export function fallbackApplyEmail(sourceUrl?: string) {
+export function fallbackApplyEmail(sourceUrl?: string, skipEmails: string[] = []) {
   if (!sourceUrl) return null;
   try {
     const host = new URL(sourceUrl).hostname.replace(/^www\./, "").toLowerCase();
     if (!host || JOB_BOARD_HOSTS.some((item) => host === item || host.endsWith(`.${item}`))) return null;
-    return `careers@${host}`;
+    const skip = new Set(skipEmails.map((item) => item.toLowerCase()));
+    const aliases = ["jobs", "careers", "hr", "apply", "talent", "hello"].map((local) => `${local}@${host}`);
+    return aliases.find((email) => !skip.has(email)) || null;
   } catch {
     return null;
   }

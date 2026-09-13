@@ -5,7 +5,11 @@ import { startOfPakistanDay } from "@/lib/pakistanDay";
 const inFlight = new Set<string>();
 
 export function normalizeCompany(name: string) {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return name
+    .toLowerCase()
+    .replace(/,\s*(lahore|remote|pakistan|worldwide).*$/i, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 export function companyKey(company: string, email?: string) {
