@@ -1,4 +1,4 @@
-import { getMasterCv } from "@/lib/cvStore";
+import { getMasterCv, resolveCvAttachment } from "@/lib/cvStore";
 import { extractApplyEmailFromListing, fallbackApplyEmail } from "@/lib/extractEmail";
 import { generateApplicationEmail, sendApplicationEmail, smtpConfigured } from "@/lib/email";
 import { analyzeJobWithAi } from "@/lib/matching/ai";
@@ -53,6 +53,22 @@ export async function sentTodayCount() {
     status: { $in: ["sent", "ready"] },
     createdAt: { $gte: startOfPakistanDay() },
   });
+}
+
+async function releaseStuckReservations() {
+  await Application.updateMany(
+    {
+      status: "ready",
+      reason: "Reserved so this company is not emailed twice.",
+      createdAt: { $lt: new Date(Date.now() - 2 * 60 * 1000) },
+    },
+    {
+      $set: {
+        status: "failed",
+        reason: "Send did not finish. Reservation released so another company can be emailed.",
+      },
+    },
+  );
 }
 
 export async function sentTodayLahoreCount(settings: UserSettings) {
@@ -352,6 +368,20 @@ export async function processJob(
 
   const cvs = await CvVersion.find();
   const cv = selectCvVersion(job, cvs) || getMasterCv();
+  const attachment = resolveCvAttachment(cv);
+  if (!attachment) {
+    job.status = "matched";
+    await job.save();
+    await logDecision({
+      jobId: job._id,
+      matchId: match._id,
+      cvId: mongoCvId(cv),
+      status: "skipped",
+      reason: "CV file is missing, so the email was not sent.",
+    });
+    return { status: "skipped", score, reason: "CV file is missing, so the email was not sent." };
+  }
+
   const email = generateApplicationEmail({
     settings,
     job,
@@ -400,8 +430,9 @@ export async function processJob(
     return { status: "ready", score, reason: "Prepared without sending." };
   }
 
+  let reservation: Awaited<ReturnType<typeof logDecision>> | undefined;
   try {
-    const reservation = await logDecision({
+    reservation = await logDecision({
       jobId: job._id,
       matchId: match._id,
       cvId: mongoCvId(cv),
@@ -417,7 +448,7 @@ export async function processJob(
       subject: email.subject,
       body: email.body,
       replyTo: settings.applicantEmail || undefined,
-      attachment: cv ? { filename: cv.fileName, path: cv.filePath } : undefined,
+      attachment,
       settings,
     });
 
@@ -440,16 +471,22 @@ export async function processJob(
     const message = error instanceof Error ? error.message : "Email failed";
     job.status = "matched";
     await job.save();
-    await logDecision({
-      jobId: job._id,
-      matchId: match._id,
-      cvId: mongoCvId(cv),
-      status: "failed",
-      emailTo: to,
-      emailSubject: email.subject,
-      emailBody: email.body,
-      reason: message,
-    });
+    if (reservation) {
+      reservation.status = "failed";
+      reservation.reason = message;
+      await reservation.save();
+    } else {
+      await logDecision({
+        jobId: job._id,
+        matchId: match._id,
+        cvId: mongoCvId(cv),
+        status: "failed",
+        emailTo: to,
+        emailSubject: email.subject,
+        emailBody: email.body,
+        reason: message,
+      });
+    }
     return { status: "failed", score, reason: message };
   } finally {
     releaseInFlight(job.company, to);
@@ -483,6 +520,7 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
     };
   }
   const results: Array<{ jobId: string; status: string; score?: number; reason?: string }> = [];
+  await releaseStuckReservations();
 
   await processFreshJobs(settings, results, options?.limit || 80);
   if ((await sentTodayCount()) < DAILY_SEND_TARGET) {
