@@ -484,6 +484,11 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
   }
   const results: Array<{ jobId: string; status: string; score?: number; reason?: string }> = [];
 
+  await processFreshJobs(settings, results, options?.limit || 80);
+  if ((await sentTodayCount()) < DAILY_SEND_TARGET) {
+    await ensureDailyQuotas(settings, results);
+  }
+
   if (options?.ingest !== false) {
     const { fetchRemoteOkJobs } = await import("@/lib/ingest/remoteok");
     const { fetchPublicBoardJobs } = await import("@/lib/ingest/publicBoards");
@@ -510,11 +515,13 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
         context: { error: error instanceof Error ? error.message : String(error) },
       });
     }
-  }
 
-  await processFreshJobs(settings, results, options?.limit || 80);
-  if ((await sentTodayCount()) < DAILY_SEND_TARGET) {
-    await ensureDailyQuotas(settings, results);
+    if ((await sentTodayCount()) < DAILY_SEND_TARGET) {
+      await processFreshJobs(settings, results, options?.limit || 80);
+      if ((await sentTodayCount()) < DAILY_SEND_TARGET) {
+        await ensureDailyQuotas(settings, results);
+      }
+    }
   }
 
   return {
