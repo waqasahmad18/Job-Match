@@ -98,6 +98,7 @@ export type UserSettings = {
 
 export type DashboardStats = {
   jobsToday: number;
+  jobsWaiting: number;
   relevantJobs: number;
   relevantWaitingEmail: number;
   applicationsSent: number;

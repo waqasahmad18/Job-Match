@@ -512,35 +512,9 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
     }
   }
 
-  await ensureDailyQuotas(settings, results);
-
+  await processFreshJobs(settings, results, options?.limit || 80);
   if ((await sentTodayCount()) < DAILY_SEND_TARGET) {
-    const fresh = await Job.find({ status: "new" }).limit(200);
-    const jobs = [...fresh]
-      .sort((left, right) => {
-        const leftRank = locationPriority(classifyLocation(left, settings).class);
-        const rightRank = locationPriority(classifyLocation(right, settings).class);
-        if (leftRank !== rightRank) return leftRank - rightRank;
-        const leftTime = new Date(left.postedAt || left.collectedAt || 0).getTime();
-        const rightTime = new Date(right.postedAt || right.collectedAt || 0).getTime();
-        return rightTime - leftTime;
-      })
-      .slice(0, options?.limit || 40);
-    for (const job of jobs) {
-      if ((await sentTodayCount()) >= DAILY_SEND_TARGET) break;
-      try {
-        const result = await processJob(String(job._id), settings);
-        results.push({ jobId: String(job._id), ...result });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        await SystemLog.create({
-          level: "error",
-          message: "Job processing failed",
-          context: { jobId: String(job._id), error: message },
-        });
-        results.push({ jobId: String(job._id), status: "failed", reason: message });
-      }
-    }
+    await ensureDailyQuotas(settings, results);
   }
 
   return {
@@ -573,23 +547,43 @@ async function upsertIncomingJob(job: Record<string, unknown> & { fingerprint: s
   await existing.save();
 }
 
+async function processFreshJobs(
+  settings: UserSettings,
+  results: Array<{ jobId: string; status: string; score?: number; reason?: string }>,
+  limit: number,
+) {
+  const fresh = await Job.find({ status: "new" }).limit(300);
+  const jobs = [...fresh]
+    .sort((left, right) => {
+      const leftRank = locationPriority(classifyLocation(left, settings).class);
+      const rightRank = locationPriority(classifyLocation(right, settings).class);
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      const leftTime = new Date(left.postedAt || left.collectedAt || 0).getTime();
+      const rightTime = new Date(right.postedAt || right.collectedAt || 0).getTime();
+      return rightTime - leftTime;
+    })
+    .slice(0, limit);
+  for (const job of jobs) {
+    if ((await sentTodayCount()) >= DAILY_SEND_TARGET) break;
+    try {
+      const result = await processJob(String(job._id), settings);
+      results.push({ jobId: String(job._id), ...result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await SystemLog.create({
+        level: "error",
+        message: "Job processing failed",
+        context: { jobId: String(job._id), error: message },
+      });
+      results.push({ jobId: String(job._id), status: "failed", reason: message });
+    }
+  }
+}
+
 async function ensureDailyQuotas(
   settings: UserSettings,
   results: Array<{ jobId: string; status: string; score?: number; reason?: string }>,
 ) {
-  const { fetchPakistanSoftwareHouses } = await import("@/lib/ingest/pakistanHouses");
-  const { fetchRemoteSoftwareHouses } = await import("@/lib/ingest/remoteHouses");
-  try {
-    for (const job of [
-      ...(await fetchPakistanSoftwareHouses()),
-      ...(await fetchRemoteSoftwareHouses()),
-    ]) {
-      await upsertIncomingJob(job);
-    }
-  } catch {
-    // Company pages can fail; fallback careers@ emails still let quota jobs send.
-  }
-
   const houseJobs = await Job.find({
     source: { $in: ["pakistan-houses", "remote-houses"] },
     status: { $in: ["new", "matched", "processed"] },

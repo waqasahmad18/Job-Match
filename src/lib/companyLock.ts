@@ -63,7 +63,7 @@ export async function acquireMongoPipelineLock() {
   const col = mongoose.connection.db?.collection("pipelinelocks");
   if (!col) return true;
   const now = new Date();
-  const until = new Date(now.getTime() + 12 * 60 * 1000);
+  const until = new Date(now.getTime() + 2 * 60 * 1000);
   const filter = { _id: "pipeline", until: { $lt: now } };
   const stale = await col.findOneAndUpdate(filter as never, { $set: { until } });
   if (stale) return true;
@@ -78,6 +78,6 @@ export async function acquireMongoPipelineLock() {
 export async function releaseMongoPipelineLock() {
   await mongoose.connection.db?.collection("pipelinelocks").updateOne(
     { _id: "pipeline" } as never,
-    { $set: { until: new Date() } },
+    { $set: { until: new Date(0) } },
   );
 }

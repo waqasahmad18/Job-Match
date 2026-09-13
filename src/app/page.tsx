@@ -77,11 +77,15 @@ export default function DashboardPage() {
       {message ? <p className="text-sm text-[var(--muted)]">{message}</p> : null}
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
-        <StatCard label="Jobs found today" value={stats?.jobsToday ?? "—"} />
         <StatCard
-          label="Relevant jobs"
+          label="Jobs found today"
+          value={stats?.jobsToday ?? "—"}
+          hint={stats?.jobsWaiting ? `${stats.jobsWaiting} still waiting to be scored` : "All collected jobs have been scored"}
+        />
+        <StatCard
+          label="Relevant today"
           value={stats?.relevantJobs ?? "—"}
-          hint={`${stats?.relevantWaitingEmail ?? 0} had no hiring email, so a CV could not go`}
+          hint={`${stats?.relevantWaitingEmail ?? 0} had no hiring email today`}
         />
         <StatCard
           label="CVs sent today"
