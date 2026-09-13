@@ -1,4 +1,4 @@
-import { createConnection } from "tls";
+import * as tls from "tls";
 import { getSmtpConfig } from "@/lib/email";
 import { rememberBouncedEmail } from "@/lib/verifyEmail";
 import { Application, Job } from "@/models";
@@ -37,7 +37,7 @@ class ImapSession {
   private queued: string[] = [];
   private waiters: Array<(line: string) => void> = [];
 
-  constructor(socket: import("tls").TLSSocket) {
+  constructor(socket: tls.TLSSocket) {
     this.socket = socket;
     socket.setEncoding("utf8");
     socket.on("data", (chunk: string) => {
@@ -88,8 +88,8 @@ export async function fetchGmailBounceRecipients(since = new Date(Date.now() - 3
   const config = getSmtpConfig();
   if (!config.user || !config.pass) return [];
 
-  const socket = await new Promise<import("tls").TLSSocket>((resolve, reject) => {
-    const connection = createConnection(
+  const socket = await new Promise<tls.TLSSocket>((resolve, reject) => {
+    const connection = tls.connect(
       { host: "imap.gmail.com", port: 993, servername: "imap.gmail.com", timeout: 12_000 },
       () => resolve(connection),
     );

@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["mongoose", "mongodb", "nodemailer"],
+  serverExternalPackages: ["mongoose", "mongodb", "nodemailer", "tls"],
   outputFileTracingIncludes: {
     "/api/cron": ["./cv/**/*"],
     "/api/pipeline": ["./cv/**/*"],
