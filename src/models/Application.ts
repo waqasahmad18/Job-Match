@@ -15,6 +15,7 @@ const ApplicationSchema = new Schema(
     emailTo: { type: String },
     emailSubject: { type: String },
     emailBody: { type: String },
+    applyUrl: { type: String },
     reason: { type: String },
     createdAt: { type: Date },
     updatedAt: { type: Date },

@@ -60,6 +60,9 @@ export const DEFAULT_LOCATIONS = [
 
 export const DEFAULT_EXCLUDED_COMPANIES = ["Interact Global"];
 
+/** These companies reject unsolicited CVs and ask applicants to use the careers form. */
+export const CAREERS_PAGE_ONLY_COMPANIES = ["Remote", "Deel", "Oyster"];
+
 export const DEFAULT_ONSITE_CITIES = ["Lahore"];
 
 export const DEFAULT_SETTINGS = {

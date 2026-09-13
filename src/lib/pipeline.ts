@@ -19,6 +19,7 @@ import {
   releaseMongoPipelineLock,
 } from "@/lib/companyLock";
 import {
+  CAREERS_PAGE_ONLY_COMPANIES,
   DAILY_SEND_TARGET,
   LAHORE_DAILY_SEND_TARGET,
   PROCESS_BATCH_PER_RUN,
@@ -26,6 +27,7 @@ import {
   SEND_BATCH_PER_RUN,
 } from "@/lib/constants";
 import { formatCompanyWithPlace } from "@/lib/format";
+import { normalizeCompany } from "@/lib/companyLock";
 import { startOfPakistanDay } from "@/lib/pakistanDay";
 import { selectCvVersion } from "@/lib/matching/selectCv";
 import { getOrCreateSettings } from "@/lib/settings";
@@ -60,8 +62,14 @@ async function alreadyApplied(job: {
 export async function sentTodayCount() {
   return Application.countDocuments({
     status: { $in: ["sent", "ready"] },
+    emailTo: { $exists: true, $nin: [null, ""] },
     createdAt: { $gte: startOfPakistanDay() },
   });
+}
+
+function isCareersPageOnly(company: string) {
+  const name = normalizeCompany(company);
+  return CAREERS_PAGE_ONLY_COMPANIES.some((item) => normalizeCompany(item) === name);
 }
 
 async function releaseStuckReservations() {
@@ -128,6 +136,7 @@ async function logDecision(input: {
   emailTo?: string;
   emailSubject?: string;
   emailBody?: string;
+  applyUrl?: string;
 }) {
   if (!input.companyName || !input.jobTitle) {
     const job = await Job.findById(input.jobId).select("company title location");
@@ -387,6 +396,19 @@ export async function processJob(
     return { status: "skipped", score, reason: "Daily worldwide-remote cap reached." };
   }
 
+  if (isCareersPageOnly(job.company) && job.sourceUrl?.startsWith("http")) {
+    job.status = "matched";
+    await job.save();
+    await logDecision({
+      jobId: job._id,
+      matchId: match._id,
+      status: "ready",
+      applyUrl: job.sourceUrl,
+      reason: "This company asks applicants to apply on the careers page, not by unsolicited email.",
+    });
+    return { status: "ready", score, reason: "Apply on the company careers page." };
+  }
+
   const bounced = await loadBouncedEmails();
   const skip = [settings.applicantEmail, ...bounced];
   const extracted = await extractApplyEmailFromListing(job, skip);
@@ -478,6 +500,7 @@ export async function processJob(
       emailTo: to,
       emailSubject: email.subject,
       emailBody: email.body,
+      applyUrl: job.sourceUrl?.startsWith("http") ? job.sourceUrl : undefined,
       reason: "Reserved so this company is not emailed twice.",
     });
 

@@ -68,7 +68,11 @@ export default function ApplicationsPage() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--accent)]">
-                  {item.status === "sent" ? "Sent with CV" : "Draft ready"}
+                  {item.emailTo
+                    ? item.status === "sent"
+                      ? "Sent with CV"
+                      : "Draft ready"
+                    : "Careers page apply"}
                 </p>
                 <h3 className="mt-1 text-xl font-semibold">
                   {item.job?.company || item.companyName?.split(",")[0] || "Company"}
@@ -96,6 +100,19 @@ export default function ApplicationsPage() {
                 <span className="text-[var(--muted)]">CV: </span>
                 {item.cvName || "Waqas Rafique Full Stack CV"}
               </p>
+              {item.applyUrl || item.job?.sourceUrl ? (
+                <p>
+                  <span className="text-[var(--muted)]">Careers page: </span>
+                  <a
+                    className="break-all text-[var(--accent-2)] underline"
+                    href={item.applyUrl || item.job?.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open and apply with CV
+                  </a>
+                </p>
+              ) : null}
             </div>
             <div>
               <p className="text-sm font-medium">Email sent with the CV</p>

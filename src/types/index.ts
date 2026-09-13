@@ -59,6 +59,7 @@ export type SerializedApplication = {
   emailTo?: string;
   emailSubject?: string;
   emailBody?: string;
+  applyUrl?: string;
   reason?: string;
   createdAt: string;
   job?: Pick<SerializedJob, "_id" | "title" | "company" | "location" | "sourceUrl">;

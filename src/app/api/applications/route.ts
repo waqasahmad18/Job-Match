@@ -53,6 +53,7 @@ export async function GET(request: Request) {
         emailTo: item.emailTo,
         emailSubject: item.emailSubject,
         emailBody: item.emailBody,
+        applyUrl: item.applyUrl || (job && "sourceUrl" in job ? String(job.sourceUrl || "") : undefined),
         reason: item.reason,
         createdAt: item.createdAt,
             job: job && "title" in job
