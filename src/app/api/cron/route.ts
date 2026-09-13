@@ -1,3 +1,4 @@
+import { PROCESS_BATCH_PER_RUN, SEND_BATCH_PER_RUN } from "@/lib/constants";
 import { runPipeline } from "@/lib/pipeline";
 import { hasMongoUri } from "@/lib/mongodb";
 import { NextResponse } from "next/server";
@@ -23,6 +24,11 @@ export async function GET(request: Request) {
   }
 
   const ingest = new URL(request.url).searchParams.get("ingest") !== "0";
-  const result = await runPipeline({ ingest, limit: 80 });
+  const result = await runPipeline({
+    ingest,
+    ingestHouses: false,
+    limit: PROCESS_BATCH_PER_RUN,
+    sendBatch: SEND_BATCH_PER_RUN,
+  });
   return NextResponse.json(result);
 }

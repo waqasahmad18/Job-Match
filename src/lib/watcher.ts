@@ -1,4 +1,4 @@
-const INTERVAL_MS = Number(process.env.WATCH_INTERVAL_MINUTES || 360) * 60 * 1000;
+const INTERVAL_MS = Number(process.env.WATCH_INTERVAL_MINUTES || 60) * 60 * 1000;
 
 let started = false;
 
@@ -15,7 +15,12 @@ export function startJobWatcher() {
         console.log("[job-watcher] daily company quota already reached");
         return;
       }
-      const result = await runPipeline({ ingest: true, limit: 80 });
+      const result = await runPipeline({
+        ingest: true,
+        ingestHouses: false,
+        limit: 20,
+        sendBatch: 8,
+      });
       console.log(`[job-watcher] processed ${result.processed} jobs`);
     } catch (error) {
       console.error("[job-watcher]", error);

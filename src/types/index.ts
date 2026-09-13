@@ -61,7 +61,7 @@ export type SerializedApplication = {
   emailBody?: string;
   reason?: string;
   createdAt: string;
-  job?: Pick<SerializedJob, "_id" | "title" | "company" | "sourceUrl">;
+  job?: Pick<SerializedJob, "_id" | "title" | "company" | "location" | "sourceUrl">;
   cvName?: string;
   score?: number;
 };

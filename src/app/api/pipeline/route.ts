@@ -19,7 +19,9 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const result = await runPipeline({
     ingest: body.ingest !== false,
+    ingestHouses: body.ingestHouses !== false,
     limit: Number(body.limit || 25),
+    sendBatch: Number(body.sendBatch || 12),
   });
   return NextResponse.json(result);
 }

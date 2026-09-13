@@ -51,7 +51,8 @@ export async function getOrCreateSettings() {
   } else {
     const companies = mergeUnique(doc.excludedCompanies, DEFAULT_SETTINGS.excludedCompanies);
     const onsiteCities = doc.onsiteCities?.length ? doc.onsiteCities : DEFAULT_SETTINGS.onsiteCities;
-    const dailySendLimit = Math.max(Number(doc.dailySendLimit || 0), 20);
+    const storedLimit = Number(doc.dailySendLimit || 0);
+    const dailySendLimit = storedLimit <= 20 ? 50 : storedLimit;
     const matchThreshold = [60, 80].includes(Number(doc.matchThreshold))
       ? 75
       : Number(doc.matchThreshold || 75);

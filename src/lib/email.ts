@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { formatCompanyWithPlace } from "@/lib/format";
 import type { UserSettings } from "@/types";
 
 export type SmtpConfig = {
@@ -62,14 +63,15 @@ function createTransport(config: SmtpConfig) {
 
 export function generateApplicationEmail(input: {
   settings: UserSettings;
-  job: { title: string; company: string };
+  job: { title: string; company: string; location?: string };
   matchedSkills: string[];
 }) {
   const name = input.settings.applicantName || "Waqas Rafique";
   const email = input.settings.applicantEmail || "vickyksr2218@gmail.com";
   const skills = input.matchedSkills.slice(0, 6).join(", ") || "React, Next.js, TypeScript, Node.js and Laravel";
   const subject = `Application for ${input.job.title} — ${name}, Full Stack Developer`;
-  const body = `Dear Hiring Team at ${input.job.company},
+  const company = formatCompanyWithPlace(input.job.company, input.job.location);
+  const body = `Dear Hiring Team at ${company},
 
 I hope you are well.
 

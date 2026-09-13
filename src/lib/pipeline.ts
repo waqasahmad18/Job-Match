@@ -16,7 +16,14 @@ import {
   releaseLocalPipelineLock,
   releaseMongoPipelineLock,
 } from "@/lib/companyLock";
-import { DAILY_SEND_TARGET, LAHORE_DAILY_SEND_MAX, LAHORE_DAILY_SEND_MIN } from "@/lib/constants";
+import {
+  DAILY_SEND_TARGET,
+  LAHORE_DAILY_SEND_MAX,
+  LAHORE_DAILY_SEND_MIN,
+  PROCESS_BATCH_PER_RUN,
+  SEND_BATCH_PER_RUN,
+} from "@/lib/constants";
+import { formatCompanyWithPlace } from "@/lib/format";
 import { startOfPakistanDay } from "@/lib/pakistanDay";
 import { selectCvVersion } from "@/lib/matching/selectCv";
 import { getOrCreateSettings } from "@/lib/settings";
@@ -103,8 +110,8 @@ async function logDecision(input: {
   emailBody?: string;
 }) {
   if (!input.companyName || !input.jobTitle) {
-    const job = await Job.findById(input.jobId).select("company title");
-    input.companyName = input.companyName || job?.company;
+    const job = await Job.findById(input.jobId).select("company title location");
+    input.companyName = input.companyName || formatCompanyWithPlace(job?.company, job?.location);
     input.jobTitle = input.jobTitle || job?.title;
   }
   return Application.create(input);
@@ -493,7 +500,27 @@ export async function processJob(
   }
 }
 
-export async function runPipeline(options?: { ingest?: boolean; limit?: number }) {
+type PipelineProgress = {
+  sentThisRun: number;
+  sendBatch: number;
+  dailyTarget: number;
+};
+
+async function dailyTargetReached(progress: PipelineProgress) {
+  if (progress.sentThisRun >= progress.sendBatch) return true;
+  return (await sentTodayCount()) >= progress.dailyTarget;
+}
+
+function countSuccessfulSend(progress: PipelineProgress, status: string) {
+  if (status === "sent" || status === "ready") progress.sentThisRun += 1;
+}
+
+export async function runPipeline(options?: {
+  ingest?: boolean;
+  ingestHouses?: boolean;
+  limit?: number;
+  sendBatch?: number;
+}) {
   if (!acquireLocalPipelineLock()) {
     return {
       processed: 0,
@@ -521,10 +548,16 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
   }
   const results: Array<{ jobId: string; status: string; score?: number; reason?: string }> = [];
   await releaseStuckReservations();
+  const progress: PipelineProgress = {
+    sentThisRun: 0,
+    sendBatch: options?.sendBatch || SEND_BATCH_PER_RUN,
+    dailyTarget: settings.dailySendLimit || DAILY_SEND_TARGET,
+  };
+  const processLimit = options?.limit || PROCESS_BATCH_PER_RUN;
 
-  await processFreshJobs(settings, results, options?.limit || 80);
-  if ((await sentTodayCount()) < DAILY_SEND_TARGET) {
-    await ensureDailyQuotas(settings, results);
+  await processFreshJobs(settings, results, processLimit, progress);
+  if (!(await dailyTargetReached(progress))) {
+    await ensureDailyQuotas(settings, results, progress);
   }
 
   if (options?.ingest !== false) {
@@ -533,16 +566,17 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
     try {
       const { fetchPakistanJobs } = await import("@/lib/ingest/pakistanJobs");
       const { fetchAggregatorJobs } = await import("@/lib/ingest/aggregators");
-      const { fetchPakistanSoftwareHouses } = await import("@/lib/ingest/pakistanHouses");
-      const { fetchRemoteSoftwareHouses } = await import("@/lib/ingest/remoteHouses");
       const incoming = [
-        ...(await fetchPakistanSoftwareHouses()),
-        ...(await fetchRemoteSoftwareHouses()),
-        ...(await fetchPakistanJobs(options?.limit || 30)),
-        ...(await fetchAggregatorJobs(options?.limit || 20)),
-        ...(await fetchRemoteOkJobs(options?.limit || 20)),
-        ...(await fetchPublicBoardJobs(options?.limit || 20)),
+        ...(await fetchPakistanJobs(options?.limit || 20)),
+        ...(await fetchAggregatorJobs(options?.limit || 15)),
+        ...(await fetchRemoteOkJobs(options?.limit || 15)),
+        ...(await fetchPublicBoardJobs(options?.limit || 15)),
       ];
+      if (options?.ingestHouses !== false) {
+        const { fetchPakistanSoftwareHouses } = await import("@/lib/ingest/pakistanHouses");
+        const { fetchRemoteSoftwareHouses } = await import("@/lib/ingest/remoteHouses");
+        incoming.unshift(...(await fetchPakistanSoftwareHouses()), ...(await fetchRemoteSoftwareHouses()));
+      }
       for (const job of incoming) {
         await upsertIncomingJob(job);
       }
@@ -554,10 +588,10 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
       });
     }
 
-    if ((await sentTodayCount()) < DAILY_SEND_TARGET) {
-      await processFreshJobs(settings, results, options?.limit || 80);
-      if ((await sentTodayCount()) < DAILY_SEND_TARGET) {
-        await ensureDailyQuotas(settings, results);
+    if (!(await dailyTargetReached(progress))) {
+      await processFreshJobs(settings, results, processLimit, progress);
+      if (!(await dailyTargetReached(progress))) {
+        await ensureDailyQuotas(settings, results, progress);
       }
     }
   }
@@ -568,7 +602,8 @@ export async function runPipeline(options?: { ingest?: boolean; limit?: number }
     aiReady: Boolean(process.env.AI_API_KEY),
     sentToday: await sentTodayCount(),
     lahoreToday: await sentTodayLahoreCount(settings),
-    dailyTarget: DAILY_SEND_TARGET,
+    dailyTarget: progress.dailyTarget,
+    sentThisRun: progress.sentThisRun,
     lahoreTarget: `${LAHORE_DAILY_SEND_MIN}-${LAHORE_DAILY_SEND_MAX}`,
     results,
   };
@@ -596,6 +631,7 @@ async function processFreshJobs(
   settings: UserSettings,
   results: Array<{ jobId: string; status: string; score?: number; reason?: string }>,
   limit: number,
+  progress: PipelineProgress,
 ) {
   const fresh = await Job.find({ status: "new" }).limit(300);
   const jobs = [...fresh]
@@ -609,9 +645,10 @@ async function processFreshJobs(
     })
     .slice(0, limit);
   for (const job of jobs) {
-    if ((await sentTodayCount()) >= DAILY_SEND_TARGET) break;
+    if (await dailyTargetReached(progress)) break;
     try {
       const result = await processJob(String(job._id), settings);
+      countSuccessfulSend(progress, result.status);
       results.push({ jobId: String(job._id), ...result });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -628,6 +665,7 @@ async function processFreshJobs(
 async function ensureDailyQuotas(
   settings: UserSettings,
   results: Array<{ jobId: string; status: string; score?: number; reason?: string }>,
+  progress: PipelineProgress,
 ) {
   const houseJobs = await Job.find({
     source: { $in: ["pakistan-houses", "remote-houses"] },
@@ -640,15 +678,16 @@ async function ensureDailyQuotas(
   });
 
   for (const job of lahoreFirst) {
+    if (await dailyTargetReached(progress)) break;
     const total = await sentTodayCount();
     const lahore = await sentTodayLahoreCount(settings);
-    if (total >= DAILY_SEND_TARGET) break;
     const isLahore = job.source === "pakistan-houses";
     if (isLahore && lahore >= LAHORE_DAILY_SEND_MAX) continue;
     const lahoreNeeded = Math.max(0, LAHORE_DAILY_SEND_MIN - lahore);
-    if (!isLahore && DAILY_SEND_TARGET - total <= lahoreNeeded) continue;
+    if (!isLahore && progress.dailyTarget - total <= lahoreNeeded) continue;
     try {
       const result = await processJob(String(job._id), settings);
+      countSuccessfulSend(progress, result.status);
       results.push({ jobId: String(job._id), ...result });
     } catch (error) {
       results.push({

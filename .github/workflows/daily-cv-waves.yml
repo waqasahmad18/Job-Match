@@ -1,0 +1,24 @@
+name: Daily CV waves
+
+on:
+  schedule:
+    # 8:00 AM to 8:00 PM Pakistan time, every 2 hours
+    - cron: "0 3,5,7,9,11,13,15 * * *"
+  workflow_dispatch:
+
+jobs:
+  send-wave:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Trigger Job Match pipeline wave
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "Add CRON_SECRET in GitHub repo secrets so later waves can run."
+            exit 1
+          fi
+          url="${APP_URL:-https://job-match-tan.vercel.app}"
+          curl -fsS --max-time 90 -H "x-cron-secret: $CRON_SECRET" "$url/api/cron"

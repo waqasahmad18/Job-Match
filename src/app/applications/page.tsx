@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDate, statusTone } from "@/lib/format";
+import { formatDate, formatJobPlace, statusTone } from "@/lib/format";
 import type { SerializedApplication } from "@/types";
 import { useEffect, useMemo, useState } from "react";
 
@@ -71,8 +71,11 @@ export default function ApplicationsPage() {
                   {item.status === "sent" ? "Sent with CV" : "Draft ready"}
                 </p>
                 <h3 className="mt-1 text-xl font-semibold">
-                  {item.companyName || item.job?.company || "Company"}
+                  {item.job?.company || item.companyName?.split(",")[0] || "Company"}
                 </h3>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  {formatJobPlace(item.job?.location) || item.job?.location || "Location not stored"}
+                </p>
                 <p className="mt-1 text-sm text-[var(--muted)]">
                   {item.jobTitle || item.job?.title || "Role"} · {formatDate(item.createdAt)}
                   {item.score != null ? ` · Score ${item.score}` : ""}

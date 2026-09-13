@@ -55,11 +55,12 @@ export async function GET(request: Request) {
         emailBody: item.emailBody,
         reason: item.reason,
         createdAt: item.createdAt,
-        job: job && "title" in job
+            job: job && "title" in job
           ? {
               _id: String(job._id),
               title: job.title,
               company: job.company,
+              location: "location" in job ? String(job.location || "") : "",
               sourceUrl: job.sourceUrl,
             }
           : undefined,

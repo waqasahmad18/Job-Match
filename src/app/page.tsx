@@ -1,7 +1,7 @@
 "use client";
 
 import { StatCard } from "@/components/StatCard";
-import { formatDate, statusTone } from "@/lib/format";
+import { formatCompanyWithPlace, formatDate, statusTone } from "@/lib/format";
 import type { DashboardStats, SerializedApplication, UserSettings } from "@/types";
 import { useEffect, useState } from "react";
 
@@ -34,14 +34,14 @@ export default function DashboardPage() {
       const res = await fetch("/api/pipeline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ingest: true, limit: 80 }),
+        body: JSON.stringify({ ingest: true, limit: 25, sendBatch: 12 }),
       });
       const data = await res.json();
       if (!res.ok) {
         setMessage(data.error || "Pipeline failed.");
       } else {
         setMessage(
-          `Processed ${data.processed} jobs. Sent today ${data.sentToday ?? 0}/${data.dailyTarget ?? 20} (Lahore ${data.lahoreToday ?? 0}). SMTP ${data.smtpReady ? "on" : "off"}.`,
+          `Processed ${data.processed} jobs. Sent today ${data.sentToday ?? 0}/${data.dailyTarget ?? 50} (Lahore ${data.lahoreToday ?? 0}). SMTP ${data.smtpReady ? "on" : "off"}.`,
         );
         await load();
       }
@@ -89,8 +89,8 @@ export default function DashboardPage() {
         />
         <StatCard
           label="CVs sent today"
-          value={`${stats?.sentToday ?? 0}/${stats?.dailyTarget ?? 20}`}
-          hint={`Target 20 companies. All-time sent: ${stats?.applicationsSent ?? 0}`}
+          value={`${stats?.sentToday ?? 0}/${stats?.dailyTarget ?? 50}`}
+          hint={`Target 50 companies in small waves. All-time sent: ${stats?.applicationsSent ?? 0}`}
         />
         <StatCard
           label="Lahore sent today"
@@ -105,8 +105,8 @@ export default function DashboardPage() {
         <article className="panel p-5">
           <h3 className="text-lg font-semibold">Apply rules</h3>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Daily must-send: 5–10 Lahore full-stack CVs and 20 companies total (Lahore onsite, Lahore remote,
-            worldwide remote). Vercel runs at 8:00 AM Pakistan time. Indeed/Glassdoor login walls are not scraped.
+            Daily target: 5–10 Lahore full-stack CVs and 50 companies total. 8:00 AM starts the first wave,
+            then later waves keep collecting and sending. Indeed/Glassdoor login walls are not scraped.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             {(settings?.locations || ["Remote worldwide", "Remote Pakistan", "Onsite Lahore only"]).map((item) => (
@@ -143,7 +143,9 @@ export default function DashboardPage() {
           {applications.slice(0, 8).map((item) => (
             <div key={item._id} className="rounded-xl border border-[var(--line)] bg-[var(--panel-2)] p-4">
               <p className="font-medium">{item.job?.title || "Job"}</p>
-              <p className="text-sm text-[var(--muted)]">{item.job?.company}</p>
+              <p className="text-sm text-[var(--muted)]">
+                {item.companyName || formatCompanyWithPlace(item.job?.company, item.job?.location)}
+              </p>
               <p className={`mt-2 text-sm capitalize ${statusTone(item.status)}`}>
                 {item.status} · Score {item.score ?? "—"}
               </p>
@@ -171,7 +173,9 @@ export default function DashboardPage() {
                 <tr key={item._id} className="border-t border-[var(--line)]">
                   <td className="px-5 py-3">
                     <div className="font-medium">{item.job?.title || "Job"}</div>
-                    <div className="text-[var(--muted)]">{item.job?.company}</div>
+                    <div className="text-[var(--muted)]">
+                      {item.companyName || formatCompanyWithPlace(item.job?.company, item.job?.location)}
+                    </div>
                   </td>
                   <td className="px-5 py-3">{item.score ?? "—"}</td>
                   <td className={`px-5 py-3 capitalize ${statusTone(item.status)}`}>{item.status}</td>

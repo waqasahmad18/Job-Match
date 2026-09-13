@@ -1,3 +1,21 @@
+export function formatJobPlace(location?: string) {
+  const raw = (location || "").replace(/\s+/g, " ").trim();
+  if (!raw) return "";
+  if (/\blahore\b/i.test(raw)) return "Lahore, Pakistan";
+  if (/\bpakistan\b/i.test(raw) && /\bremote\b/i.test(raw)) return "Remote, Pakistan";
+  if (/\b(remote|worldwide|anywhere|distributed)\b/i.test(raw)) return "Remote, Worldwide";
+  return raw;
+}
+
+export function formatCompanyWithPlace(company?: string, location?: string) {
+  const name = (company || "").trim();
+  const place = formatJobPlace(location);
+  if (!name) return place;
+  if (!place) return name;
+  if (name.toLowerCase().includes(place.toLowerCase())) return name;
+  return `${name}, ${place}`;
+}
+
 export function listFromText(value: string) {
   return value
     .split(/[\n,]/)

@@ -1,6 +1,6 @@
 # Job Match
 
-Private job-matching tool. It collects recent software jobs, scores the description, skips Interact Global, and emails Waqas Rafique's CV. Daily must-send: 5–10 Lahore full-stack CVs and 20 companies total (Lahore onsite, Lahore remote, worldwide remote).
+Private job-matching tool. It collects recent software jobs, scores the description, skips Interact Global, and emails Waqas Rafique's CV. Daily target: 5–10 Lahore full-stack CVs and 50 companies total, sent in small waves from 8:00 AM Pakistan time.
 
 ## Local
 

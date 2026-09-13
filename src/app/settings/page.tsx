@@ -13,7 +13,7 @@ const EMPTY: UserSettings = {
   onsiteCities: [],
   skills: [],
   matchThreshold: 75,
-  dailySendLimit: 20,
+  dailySendLimit: 50,
   minSalaryPkr: 80000,
   cooldownDays: 14,
   autoSend: true,
@@ -88,7 +88,7 @@ export default function SettingsPage() {
       <header>
         <h2 className="text-2xl font-semibold sm:text-3xl">Settings</h2>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          Daily quota: 5–10 Lahore full-stack CVs and 20 companies total including worldwide remote.
+          Daily quota: 5–10 Lahore full-stack CVs and 50 companies total including worldwide remote.
           Other-city onsite is skipped. Interact Global is skipped.
         </p>
       </header>
