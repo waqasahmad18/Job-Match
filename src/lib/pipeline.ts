@@ -18,9 +18,9 @@ import {
 } from "@/lib/companyLock";
 import {
   DAILY_SEND_TARGET,
-  LAHORE_DAILY_SEND_MAX,
-  LAHORE_DAILY_SEND_MIN,
+  LAHORE_DAILY_SEND_TARGET,
   PROCESS_BATCH_PER_RUN,
+  REMOTE_DAILY_SEND_TARGET,
   SEND_BATCH_PER_RUN,
 } from "@/lib/constants";
 import { formatCompanyWithPlace } from "@/lib/format";
@@ -78,17 +78,35 @@ async function releaseStuckReservations() {
   );
 }
 
-export async function sentTodayLahoreCount(settings: UserSettings) {
+export async function sentTodayLocationCounts(settings: UserSettings) {
   const apps = await Application.find({
     status: { $in: ["sent", "ready"] },
     createdAt: { $gte: startOfPakistanDay() },
   }).select("jobId");
-  if (!apps.length) return 0;
+  if (!apps.length) return { lahore: 0, remote: 0 };
   const jobs = await Job.find({ _id: { $in: apps.map((item) => item.jobId) } });
-  return jobs.filter((job) => {
-    const locationClass = classifyLocation(job, settings).class;
-    return locationClass === "lahore-onsite" || locationClass === "lahore-remote";
-  }).length;
+  return jobs.reduce(
+    (counts, job) => {
+      const locationClass = classifyLocation(job, settings).class;
+      if (locationClass === "lahore-onsite" || locationClass === "lahore-remote") counts.lahore += 1;
+      if (locationClass === "remote-worldwide") counts.remote += 1;
+      return counts;
+    },
+    { lahore: 0, remote: 0 },
+  );
+}
+
+export async function sentTodayLahoreCount(settings: UserSettings) {
+  return (await sentTodayLocationCounts(settings)).lahore;
+}
+
+export async function sentTodayRemoteCount(settings: UserSettings) {
+  return (await sentTodayLocationCounts(settings)).remote;
+}
+
+function isLahoreJob(job: { title: string; company: string; location?: string; description: string; tags?: string[]; source?: string }, settings: UserSettings) {
+  const locationClass = classifyLocation(job, settings).class;
+  return locationClass === "lahore-onsite" || locationClass === "lahore-remote";
 }
 
 
@@ -343,19 +361,28 @@ export async function processJob(
 
   const locationClass = classifyLocation(job, settings).class;
   const isLahore = locationClass === "lahore-onsite" || locationClass === "lahore-remote";
-  if (isLahore) {
-    const lahoreToday = await sentTodayLahoreCount(settings);
-    if (lahoreToday >= LAHORE_DAILY_SEND_MAX) {
-      job.status = "matched";
-      await job.save();
-      await logDecision({
-        jobId: job._id,
-        matchId: match._id,
-        status: "skipped",
-        reason: `Daily Lahore cap of ${LAHORE_DAILY_SEND_MAX} reached.`,
-      });
-      return { status: "skipped", score, reason: "Daily Lahore cap reached." };
-    }
+  const buckets = await sentTodayLocationCounts(settings);
+  if (isLahore && buckets.lahore >= LAHORE_DAILY_SEND_TARGET) {
+    job.status = "matched";
+    await job.save();
+    await logDecision({
+      jobId: job._id,
+      matchId: match._id,
+      status: "skipped",
+      reason: `Daily Lahore cap of ${LAHORE_DAILY_SEND_TARGET} reached.`,
+    });
+    return { status: "skipped", score, reason: "Daily Lahore cap reached." };
+  }
+  if (!isLahore && buckets.remote >= REMOTE_DAILY_SEND_TARGET) {
+    job.status = "matched";
+    await job.save();
+    await logDecision({
+      jobId: job._id,
+      matchId: match._id,
+      status: "skipped",
+      reason: `Daily worldwide-remote cap of ${REMOTE_DAILY_SEND_TARGET} reached.`,
+    });
+    return { status: "skipped", score, reason: "Daily worldwide-remote cap reached." };
   }
 
   const hiringEmail =
@@ -502,6 +529,8 @@ export async function processJob(
 
 type PipelineProgress = {
   sentThisRun: number;
+  sentThisRunLahore: number;
+  sentThisRunRemote: number;
   sendBatch: number;
   dailyTarget: number;
 };
@@ -511,8 +540,17 @@ async function dailyTargetReached(progress: PipelineProgress) {
   return (await sentTodayCount()) >= progress.dailyTarget;
 }
 
-function countSuccessfulSend(progress: PipelineProgress, status: string) {
-  if (status === "sent" || status === "ready") progress.sentThisRun += 1;
+function waveBucketFull(progress: PipelineProgress, isLahore: boolean) {
+  const lahoreWave = Math.ceil(progress.sendBatch / 2);
+  const remoteWave = Math.floor(progress.sendBatch / 2);
+  return isLahore ? progress.sentThisRunLahore >= lahoreWave : progress.sentThisRunRemote >= remoteWave;
+}
+
+function countSuccessfulSend(progress: PipelineProgress, status: string, isLahore: boolean) {
+  if (status !== "sent" && status !== "ready") return;
+  progress.sentThisRun += 1;
+  if (isLahore) progress.sentThisRunLahore += 1;
+  else progress.sentThisRunRemote += 1;
 }
 
 export async function runPipeline(options?: {
@@ -550,6 +588,8 @@ export async function runPipeline(options?: {
   await releaseStuckReservations();
   const progress: PipelineProgress = {
     sentThisRun: 0,
+    sentThisRunLahore: 0,
+    sentThisRunRemote: 0,
     sendBatch: options?.sendBatch || SEND_BATCH_PER_RUN,
     dailyTarget: settings.dailySendLimit || DAILY_SEND_TARGET,
   };
@@ -596,15 +636,18 @@ export async function runPipeline(options?: {
     }
   }
 
+  const locationCounts = await sentTodayLocationCounts(settings);
   return {
     processed: results.length,
     smtpReady: smtpConfigured(settings),
     aiReady: Boolean(process.env.AI_API_KEY),
     sentToday: await sentTodayCount(),
-    lahoreToday: await sentTodayLahoreCount(settings),
+    lahoreToday: locationCounts.lahore,
+    remoteToday: locationCounts.remote,
     dailyTarget: progress.dailyTarget,
     sentThisRun: progress.sentThisRun,
-    lahoreTarget: `${LAHORE_DAILY_SEND_MIN}-${LAHORE_DAILY_SEND_MAX}`,
+    lahoreTarget: LAHORE_DAILY_SEND_TARGET,
+    remoteTarget: REMOTE_DAILY_SEND_TARGET,
     results,
   };
   } finally {
@@ -646,9 +689,11 @@ async function processFreshJobs(
     .slice(0, limit);
   for (const job of jobs) {
     if (await dailyTargetReached(progress)) break;
+    const lahoreJob = isLahoreJob(job, settings);
+    if (waveBucketFull(progress, lahoreJob)) continue;
     try {
       const result = await processJob(String(job._id), settings);
-      countSuccessfulSend(progress, result.status);
+      countSuccessfulSend(progress, result.status, lahoreJob);
       results.push({ jobId: String(job._id), ...result });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -679,15 +724,16 @@ async function ensureDailyQuotas(
 
   for (const job of lahoreFirst) {
     if (await dailyTargetReached(progress)) break;
-    const total = await sentTodayCount();
-    const lahore = await sentTodayLahoreCount(settings);
-    const isLahore = job.source === "pakistan-houses";
-    if (isLahore && lahore >= LAHORE_DAILY_SEND_MAX) continue;
-    const lahoreNeeded = Math.max(0, LAHORE_DAILY_SEND_MIN - lahore);
-    if (!isLahore && progress.dailyTarget - total <= lahoreNeeded) continue;
+    const lahoreJob = isLahoreJob(job, settings);
+    if (waveBucketFull(progress, lahoreJob)) continue;
+    const buckets = await sentTodayLocationCounts(settings);
+    if (lahoreJob && buckets.lahore >= LAHORE_DAILY_SEND_TARGET) continue;
+    if (!lahoreJob && buckets.remote >= REMOTE_DAILY_SEND_TARGET) continue;
+    const lahoreNeeded = Math.max(0, LAHORE_DAILY_SEND_TARGET - buckets.lahore);
+    if (!lahoreJob && progress.dailyTarget - buckets.lahore - buckets.remote <= lahoreNeeded) continue;
     try {
       const result = await processJob(String(job._id), settings);
-      countSuccessfulSend(progress, result.status);
+      countSuccessfulSend(progress, result.status, lahoreJob);
       results.push({ jobId: String(job._id), ...result });
     } catch (error) {
       results.push({

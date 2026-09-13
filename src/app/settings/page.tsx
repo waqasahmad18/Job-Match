@@ -88,7 +88,7 @@ export default function SettingsPage() {
       <header>
         <h2 className="text-2xl font-semibold sm:text-3xl">Settings</h2>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          Daily quota: 5–10 Lahore full-stack CVs and 50 companies total including worldwide remote.
+          Daily quota stays equal: 25 Lahore (onsite + Lahore remote) and 25 worldwide remote.
           Other-city onsite is skipped. Interact Global is skipped.
         </p>
       </header>

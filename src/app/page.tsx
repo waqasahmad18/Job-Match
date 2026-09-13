@@ -41,7 +41,7 @@ export default function DashboardPage() {
         setMessage(data.error || "Pipeline failed.");
       } else {
         setMessage(
-          `Processed ${data.processed} jobs. Sent today ${data.sentToday ?? 0}/${data.dailyTarget ?? 50} (Lahore ${data.lahoreToday ?? 0}). SMTP ${data.smtpReady ? "on" : "off"}.`,
+          `Processed ${data.processed} jobs. Sent today ${data.sentToday ?? 0}/${data.dailyTarget ?? 50} (Lahore ${data.lahoreToday ?? 0}/${data.lahoreTarget ?? 25}, remote ${data.remoteToday ?? 0}/${data.remoteTarget ?? 25}). SMTP ${data.smtpReady ? "on" : "off"}.`,
         );
         await load();
       }
@@ -90,12 +90,17 @@ export default function DashboardPage() {
         <StatCard
           label="CVs sent today"
           value={`${stats?.sentToday ?? 0}/${stats?.dailyTarget ?? 50}`}
-          hint={`Target 50 companies in small waves. All-time sent: ${stats?.applicationsSent ?? 0}`}
+          hint={`25 Lahore + 25 worldwide remote. All-time sent: ${stats?.applicationsSent ?? 0}`}
         />
         <StatCard
           label="Lahore sent today"
-          value={`${stats?.lahoreToday ?? 0}/${stats?.lahoreTarget ?? "5-10"}`}
+          value={`${stats?.lahoreToday ?? 0}/${stats?.lahoreTarget ?? 25}`}
           hint="Lahore onsite + Lahore remote"
+        />
+        <StatCard
+          label="Worldwide remote today"
+          value={`${stats?.remoteToday ?? 0}/${stats?.remoteTarget ?? 25}`}
+          hint="Remote roles outside a city lock"
         />
         <StatCard label="Ignored / rejected" value={stats?.ignoredRejected ?? "—"} />
         <StatCard label="Match threshold" value={`${stats?.matchThreshold ?? settings?.matchThreshold ?? 75}%`} />
@@ -105,8 +110,9 @@ export default function DashboardPage() {
         <article className="panel p-5">
           <h3 className="text-lg font-semibold">Apply rules</h3>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Daily target: 5–10 Lahore full-stack CVs and 50 companies total. 8:00 AM starts the first wave,
-            then later waves keep collecting and sending. Indeed/Glassdoor login walls are not scraped.
+            Daily target stays equal: 25 Lahore (onsite + Lahore remote) and 25 worldwide remote.
+            8:00 AM starts the first wave, then later waves keep collecting and sending. Indeed/Glassdoor
+            login walls are not scraped.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             {(settings?.locations || ["Remote worldwide", "Remote Pakistan", "Onsite Lahore only"]).map((item) => (

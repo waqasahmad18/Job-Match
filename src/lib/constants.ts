@@ -47,13 +47,15 @@ export const RECENT_JOB_MAX_DAYS = Number(process.env.RECENT_JOB_MAX_DAYS || 14)
 export const DAILY_SEND_TARGET = Number(process.env.DAILY_SEND_LIMIT || 50);
 export const SEND_BATCH_PER_RUN = Number(process.env.SEND_BATCH_PER_RUN || 8);
 export const PROCESS_BATCH_PER_RUN = Number(process.env.PROCESS_BATCH_PER_RUN || 20);
-export const LAHORE_DAILY_SEND_MIN = Number(process.env.LAHORE_DAILY_SEND_MIN || 5);
-export const LAHORE_DAILY_SEND_MAX = Number(process.env.LAHORE_DAILY_SEND_MAX || 10);
+const lahoreQuota = Number(process.env.LAHORE_DAILY_SEND_MAX || process.env.LAHORE_DAILY_SEND_MIN || 25);
+export const LAHORE_DAILY_SEND_TARGET = lahoreQuota <= 10 ? 25 : lahoreQuota;
+export const REMOTE_DAILY_SEND_TARGET = Number(process.env.REMOTE_DAILY_SEND_TARGET || 25);
+export const LAHORE_DAILY_SEND_MIN = LAHORE_DAILY_SEND_TARGET;
+export const LAHORE_DAILY_SEND_MAX = LAHORE_DAILY_SEND_TARGET;
 
 export const DEFAULT_LOCATIONS = [
-  "Lahore onsite first (5-10/day)",
-  "Lahore remote",
-  "Worldwide remote (recent posts)",
+  "Lahore Pakistan onsite + remote (25/day)",
+  "Worldwide remote (25/day)",
 ];
 
 export const DEFAULT_EXCLUDED_COMPANIES = ["Interact Global"];

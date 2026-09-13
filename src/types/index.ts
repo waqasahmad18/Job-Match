@@ -104,8 +104,10 @@ export type DashboardStats = {
   applicationsSent: number;
   sentToday: number;
   lahoreToday: number;
+  remoteToday: number;
   dailyTarget: number;
-  lahoreTarget: string;
+  lahoreTarget: number | string;
+  remoteTarget: number | string;
   ignoredRejected: number;
   matchThreshold: number;
   mongoConnected: boolean;
