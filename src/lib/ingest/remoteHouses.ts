@@ -1,4 +1,4 @@
-import { extractApplyEmail } from "@/lib/extractEmail";
+import { extractApplyEmail, findCompanyApplyEmail } from "@/lib/extractEmail";
 import { toJob, type NormalizedJob } from "@/lib/ingest/publicBoards";
 
 const HOUSES = [
@@ -38,7 +38,6 @@ function houseJob(house: (typeof HOUSES)[number], email: string): NormalizedJob 
 }
 
 async function readHouse(house: (typeof HOUSES)[number]): Promise<NormalizedJob[]> {
-  const fallbackEmail = `careers@${house.domain}`;
   try {
     const response = await fetch(house.url, {
       headers: {
@@ -50,11 +49,13 @@ async function readHouse(house: (typeof HOUSES)[number]): Promise<NormalizedJob[
     });
     const html = response.ok ? await response.text() : "";
     const text = html.replace(/<[^>]+>/g, " ");
-    const email = extractApplyEmail(`${text} ${house.url}`) || fallbackEmail;
+    const email =
+      extractApplyEmail(`${text} ${house.url}`) || (await findCompanyApplyEmail(house.url)) || "";
     const job = houseJob(house, email);
     return job ? [job] : [];
   } catch {
-    const job = houseJob(house, fallbackEmail);
+    const email = (await findCompanyApplyEmail(house.url)) || "";
+    const job = houseJob(house, email);
     return job ? [job] : [];
   }
 }

@@ -1,4 +1,4 @@
-import { extractApplyEmail } from "@/lib/extractEmail";
+import { extractApplyEmail, findCompanyApplyEmail } from "@/lib/extractEmail";
 import { toJob, type NormalizedJob } from "@/lib/ingest/publicBoards";
 
 const HOUSES = [
@@ -19,7 +19,7 @@ const HOUSES = [
   { company: "47 Billion", url: "https://47billion.com/careers", domain: "47billion.com" },
   { company: "InvoZone", url: "https://invozone.com/careers", domain: "invozone.com" },
   { company: "NorthBay Solutions", url: "https://www.northbaysolutions.com/careers", domain: "northbaysolutions.com" },
-  { company: "Nextbridge", url: "https://nextbridge.pk/careers/", domain: "nextbridge.pk" },
+  { company: "Nextbridge", url: "https://nextbridge.com/contact-us/", domain: "nextbridge.com" },
   { company: "PureLogics", url: "https://purelogics.com/careers/", domain: "purelogics.com" },
   { company: "Goodcore Software", url: "https://www.goodcore.co.uk/careers/", domain: "goodcore.co.uk" },
   { company: "Techverx", url: "https://techverx.com/careers/", domain: "techverx.com" },
@@ -67,7 +67,6 @@ function houseJob(
 }
 
 async function readHouse(house: (typeof HOUSES)[number]): Promise<NormalizedJob[]> {
-  const fallbackEmail = `careers@${house.domain}`;
   try {
     const response = await fetch(house.url, {
       headers: {
@@ -79,7 +78,8 @@ async function readHouse(house: (typeof HOUSES)[number]): Promise<NormalizedJob[
     });
     const html = response.ok ? await response.text() : "";
     const text = html ? cleanHtml(html) : "";
-    const email = extractApplyEmail(`${text} ${house.url}`) || fallbackEmail;
+    const email =
+      extractApplyEmail(`${text} ${house.url}`) || (await findCompanyApplyEmail(house.url)) || "";
     const title =
       [...new Set([...text.matchAll(TITLE_RE)].map((match) => match[1].trim()))].find((item) =>
         ROLE_RE.test(item),
@@ -92,10 +92,11 @@ async function readHouse(house: (typeof HOUSES)[number]): Promise<NormalizedJob[
     );
     return job ? [job] : [];
   } catch {
+    const email = (await findCompanyApplyEmail(house.url)) || "";
     const job = houseJob(
       house,
       "Full Stack Developer",
-      fallbackEmail,
+      email,
       `${house.company} is hiring full-stack developers in Lahore.`,
     );
     return job ? [job] : [];
