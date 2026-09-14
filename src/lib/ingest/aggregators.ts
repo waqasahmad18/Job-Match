@@ -1,14 +1,10 @@
+import { fetchJson } from "@/lib/ingest/http";
 import { toJob, type NormalizedJob } from "@/lib/ingest/publicBoards";
 
 const SOFTWARE_TAGS = ["react", "next.js", "node", "javascript", "laravel", "python"];
 
 async function fetchJobicy(limit: number, extra = "") {
-  const response = await fetch(`https://jobicy.com/api/v2/remote-jobs?count=50&tag=javascript${extra}`, {
-    headers: { Accept: "application/json", "User-Agent": "job-match-automation/1.0" },
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`Jobicy failed: ${response.status}`);
-  const payload = (await response.json()) as {
+  const payload = await fetchJson<{
     jobs?: Array<{
       id?: number;
       jobTitle?: string;
@@ -18,7 +14,7 @@ async function fetchJobicy(limit: number, extra = "") {
       jobDescription?: string;
       pubDate?: string;
     }>;
-  };
+  }>(`https://jobicy.com/api/v2/remote-jobs?count=50&tag=javascript${extra}`);
   return (payload.jobs || [])
     .map((item) =>
       toJob({
@@ -38,12 +34,7 @@ async function fetchJobicy(limit: number, extra = "") {
 }
 
 async function fetchHimalayas(limit: number) {
-  const response = await fetch("https://www.himalayas.app/jobs/api?limit=40", {
-    headers: { Accept: "application/json", "User-Agent": "job-match-automation/1.0" },
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`Himalayas failed: ${response.status}`);
-  const payload = (await response.json()) as {
+  const payload = await fetchJson<{
     jobs?: Array<{
       title?: string;
       excerpt?: string;
@@ -53,7 +44,7 @@ async function fetchHimalayas(limit: number) {
       guid?: string;
       createdAt?: string;
     }>;
-  };
+  }>("https://www.himalayas.app/jobs/api?limit=40");
   return (payload.jobs || [])
     .map((item) =>
       toJob({
@@ -73,15 +64,7 @@ async function fetchHimalayas(limit: number) {
 }
 
 async function fetchMuse(limit: number) {
-  const response = await fetch(
-    "https://www.themuse.com/api/public/jobs?page=1&category=Software%20Engineering&descending=true",
-    {
-      headers: { Accept: "application/json", "User-Agent": "job-match-automation/1.0" },
-      cache: "no-store",
-    },
-  );
-  if (!response.ok) throw new Error(`The Muse failed: ${response.status}`);
-  const payload = (await response.json()) as {
+  const payload = await fetchJson<{
     results?: Array<{
       id?: number;
       name?: string;
@@ -91,7 +74,7 @@ async function fetchMuse(limit: number) {
       company?: { name?: string };
       publication_date?: string;
     }>;
-  };
+  }>("https://www.themuse.com/api/public/jobs?page=1&category=Software%20Engineering&descending=true");
   return (payload.results || [])
     .map((item) =>
       toJob({
@@ -118,16 +101,7 @@ async function fetchJSearch(query: string, limit: number) {
   url.searchParams.set("page", "1");
   url.searchParams.set("num_pages", "1");
   url.searchParams.set("country", "pk");
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "X-RapidAPI-Key": key,
-      "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
-    },
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`JSearch failed: ${response.status}`);
-  const payload = (await response.json()) as {
+  const payload = await fetchJson<{
     data?: Array<{
       job_id?: string;
       job_title?: string;
@@ -138,7 +112,10 @@ async function fetchJSearch(query: string, limit: number) {
       job_apply_link?: string;
       job_posted_at_datetime_utc?: string;
     }>;
-  };
+  }>(url.toString(), {
+    "X-RapidAPI-Key": key,
+    "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
+  });
   return (payload.data || [])
     .map((item) =>
       toJob({

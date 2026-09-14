@@ -51,17 +51,8 @@ export async function GET(request: Request) {
       ingestHouses: false,
       limit: Math.max(PROCESS_BATCH_PER_RUN, sendBatch * 2),
       sendBatch,
-    });
-    await SystemLog.create({
-      level: "info",
-      message: "Cron run completed",
-      context: {
-        source: vercelCron ? "vercel" : "github-or-manual",
-        processed: result.processed,
-        sentToday: result.sentToday,
-        sentThisRun: result.sentThisRun,
-        skipped: (result as { skipped?: string }).skipped,
-      },
+      syncBounces: true,
+      source: vercelCron ? "vercel-cron" : "github-or-manual",
     });
     return NextResponse.json(result);
   } catch (error) {

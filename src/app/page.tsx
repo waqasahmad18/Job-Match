@@ -34,17 +34,21 @@ export default function DashboardPage() {
       const res = await fetch("/api/pipeline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ingest: true, limit: 25, sendBatch: 12 }),
+        body: JSON.stringify({ ingest: true, limit: 30, sendBatch: 8 }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setMessage(data.error || "Pipeline failed.");
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 504 || res.status === 502) {
+        setMessage("Vercel timed out before finishing. Try Collect again — fetch now runs first so new jobs should appear.");
+        await load();
+      } else if (!res.ok) {
+        setMessage(data.error || `Pipeline failed (${res.status}).`);
       } else if (data.skipped) {
         setMessage(data.skipped);
         await load();
       } else {
+        const errors = Array.isArray(data.ingestErrors) && data.ingestErrors.length ? ` Sources: ${data.ingestErrors.join("; ")}` : "";
         setMessage(
-          `Fetched ${data.ingestedKept ?? 0} allowed jobs (${data.ingestedNew ?? 0} new, dropped ${data.ingestedDropped ?? 0} off-location). Processed ${data.processed} jobs. Sent today ${data.sentToday ?? 0}/${data.dailyTarget ?? 50} (Lahore ${data.lahoreToday ?? 0}/${data.lahoreTarget ?? 25}, remote ${data.remoteToday ?? 0}/${data.remoteTarget ?? 25}). SMTP ${data.smtpReady ? "on" : "off"}.`,
+          `Fetched ${data.ingestedKept ?? 0} allowed jobs (${data.ingestedNew ?? 0} new, dropped ${data.ingestedDropped ?? 0} off-location). Processed ${data.processed} jobs. Sent today ${data.sentToday ?? 0}/${data.dailyTarget ?? 50} (Lahore ${data.lahoreToday ?? 0}/${data.lahoreTarget ?? 25}, remote ${data.remoteToday ?? 0}/${data.remoteTarget ?? 25}). SMTP ${data.smtpReady ? "on" : "off"}.${errors}`,
         );
         await load();
       }

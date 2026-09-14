@@ -1,4 +1,5 @@
 import { jobFingerprint } from "@/lib/fingerprint";
+import { fetchJson } from "@/lib/ingest/http";
 
 const SOFTWARE_HINTS = [
   "react",
@@ -90,49 +91,8 @@ export function toJob(input: {
   };
 }
 
-async function fetchArbeitnow(limit: number) {
-  const response = await fetch("https://www.arbeitnow.com/api/job-board-api", {
-    headers: { Accept: "application/json", "User-Agent": "job-match-automation/1.0" },
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`Arbeitnow failed: ${response.status}`);
-  const payload = (await response.json()) as {
-    data?: Array<{
-      slug?: string;
-      title?: string;
-      company_name?: string;
-      description?: string;
-      location?: string;
-      url?: string;
-      tags?: string[];
-      created_at?: number;
-    }>;
-  };
-  return (payload.data || [])
-    .map((item) =>
-      toJob({
-        source: "arbeitnow",
-        externalId: item.slug,
-        sourceUrl: item.url || "",
-        title: item.title || "",
-        company: item.company_name || "",
-        location: item.location,
-        description: item.description || "",
-        tags: item.tags || [],
-        postedAt: item.created_at ? new Date(item.created_at * 1000) : undefined,
-      }),
-    )
-    .filter((job): job is NormalizedJob => Boolean(job))
-    .slice(0, limit);
-}
-
 async function fetchRemotive(limit: number) {
-  const response = await fetch("https://remotive.com/api/remote-jobs?category=software-dev", {
-    headers: { Accept: "application/json", "User-Agent": "job-match-automation/1.0" },
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`Remotive failed: ${response.status}`);
-  const payload = (await response.json()) as {
+  const payload = await fetchJson<{
     jobs?: Array<{
       id?: number;
       title?: string;
@@ -143,7 +103,7 @@ async function fetchRemotive(limit: number) {
       tags?: string[];
       publication_date?: string;
     }>;
-  };
+  }>("https://remotive.com/api/remote-jobs?category=software-dev");
   return (payload.jobs || [])
     .map((item) =>
       toJob({
@@ -163,6 +123,5 @@ async function fetchRemotive(limit: number) {
 }
 
 export async function fetchPublicBoardJobs(limit = 40) {
-  const results = await Promise.allSettled([fetchArbeitnow(limit), fetchRemotive(limit)]);
-  return results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+  return fetchRemotive(limit);
 }

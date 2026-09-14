@@ -49,20 +49,24 @@ export async function GET() {
       Application.countDocuments({ status: { $in: ["rejected", "skipped"] } }),
       sentTodayCount(),
       sentTodayLocationCounts(settings),
-      SystemLog.findOne({ message: { $in: ["Cron run completed", "Cron run failed"] } }).sort({ createdAt: -1 }),
+      SystemLog.findOne({
+        message: { $in: ["Hunt run completed", "Cron run completed", "Cron run failed", "Hunt run failed"] },
+      }).sort({ createdAt: -1 }),
     ]);
 
   const cronContext = (lastCron?.context || {}) as {
     processed?: number;
     sentThisRun?: number;
+    ingestedNew?: number;
     skipped?: string;
     error?: string;
     source?: string;
   };
   const lastCronNote = lastCron
-    ? lastCron.message === "Cron run failed"
+    ? lastCron.message.includes("failed")
       ? cronContext.error || "Automatic hunt failed"
-      : cronContext.skipped || `Processed ${cronContext.processed ?? 0}. Sent this run: ${cronContext.sentThisRun ?? 0}.`
+      : cronContext.skipped ||
+        `Fetched ${cronContext.ingestedNew ?? 0} new. Processed ${cronContext.processed ?? 0}. Sent this run: ${cronContext.sentThisRun ?? 0}.`
     : "Automatic hunt has not logged a run yet. Next Vercel run is 8:00–8:59 AM Pakistan time.";
 
   return NextResponse.json({

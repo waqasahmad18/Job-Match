@@ -585,6 +585,8 @@ export async function runPipeline(options?: {
   ingestHouses?: boolean;
   limit?: number;
   sendBatch?: number;
+  syncBounces?: boolean;
+  source?: string;
 }) {
   if (!acquireLocalPipelineLock()) {
     return {
@@ -593,14 +595,23 @@ export async function runPipeline(options?: {
       aiReady: Boolean(process.env.AI_API_KEY),
       sentToday: await sentTodayCount(),
       skipped: "Pipeline already running. Duplicate send blocked.",
+      ingested: 0,
+      ingestedKept: 0,
+      ingestedNew: 0,
+      ingestedDropped: 0,
       results: [],
     };
   }
 
+  const deadline = Date.now() + 52_000;
   let mongoLocked = false;
   try {
   const { settings } = await getOrCreateSettings();
   mongoLocked = await acquireMongoPipelineLock();
+  if (!mongoLocked) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    mongoLocked = await acquireMongoPipelineLock();
+  }
   if (!mongoLocked) {
     return {
       processed: 0,
@@ -608,6 +619,10 @@ export async function runPipeline(options?: {
       aiReady: Boolean(process.env.AI_API_KEY),
       sentToday: await sentTodayCount(),
       skipped: "Another pipeline is already sending. Duplicate company mail blocked.",
+      ingested: 0,
+      ingestedKept: 0,
+      ingestedNew: 0,
+      ingestedDropped: 0,
       results: [],
     };
   }
@@ -622,11 +637,6 @@ export async function runPipeline(options?: {
   };
   const processLimit = options?.limit || PROCESS_BATCH_PER_RUN;
   let ingestStats = { fetched: 0, kept: 0, inserted: 0, dropped: 0, errors: [] as string[] };
-
-  await processFreshJobs(settings, results, processLimit, progress);
-  if (!(await dailyTargetReached(progress))) {
-    await ensureDailyQuotas(settings, results, progress);
-  }
 
   if (options?.ingest !== false) {
     try {
@@ -654,23 +664,24 @@ export async function runPipeline(options?: {
       });
       ingestStats.errors.push(error instanceof Error ? error.message : String(error));
     }
-
-    if (!(await dailyTargetReached(progress))) {
-      await processFreshJobs(settings, results, processLimit, progress);
-      if (!(await dailyTargetReached(progress))) {
-        await ensureDailyQuotas(settings, results, progress);
-      }
-    }
   }
 
-  const bounces = await syncGmailBounces().catch(() => ({
-    checked: false,
-    bounced: 0,
-    released: 0,
-  }));
+  await processFreshJobs(settings, results, processLimit, progress, deadline);
+  if (!(await dailyTargetReached(progress)) && Date.now() < deadline) {
+    await ensureDailyQuotas(settings, results, progress, deadline);
+  }
+
+  const bounces =
+    options?.syncBounces === false || Date.now() > deadline - 8_000
+      ? { checked: false, bounced: 0, released: 0 }
+      : await syncGmailBounces().catch(() => ({
+          checked: false,
+          bounced: 0,
+          released: 0,
+        }));
 
   const locationCounts = await sentTodayLocationCounts(settings);
-  return {
+  const payload = {
     processed: results.length,
     smtpReady: smtpConfigured(settings),
     aiReady: Boolean(process.env.AI_API_KEY),
@@ -689,6 +700,19 @@ export async function runPipeline(options?: {
     bounces,
     results,
   };
+  await SystemLog.create({
+    level: "info",
+    message: "Hunt run completed",
+    context: {
+      source: options?.source || "pipeline",
+      processed: payload.processed,
+      sentToday: payload.sentToday,
+      sentThisRun: payload.sentThisRun,
+      ingestedNew: payload.ingestedNew,
+      ingestedKept: payload.ingestedKept,
+    },
+  }).catch(() => undefined);
+  return payload;
   } finally {
     if (mongoLocked) await releaseMongoPipelineLock();
     releaseLocalPipelineLock();
@@ -706,8 +730,12 @@ async function upsertIncomingJob(
   if (existing.status === "sent") return "skipped" as const;
   existing.description = String(job.description || existing.description);
   existing.location = String(job.location || existing.location);
-  existing.status = "new";
   if (job.postedAt) existing.postedAt = job.postedAt;
+  if (existing.status === "processed" || existing.status === "rejected") {
+    await existing.save();
+    return "skipped" as const;
+  }
+  existing.collectedAt = new Date();
   await existing.save();
   return "updated" as const;
 }
@@ -717,6 +745,7 @@ async function processFreshJobs(
   results: Array<{ jobId: string; status: string; score?: number; reason?: string }>,
   limit: number,
   progress: PipelineProgress,
+  deadline = Date.now() + 52_000,
 ) {
   const fresh = await Job.find({ status: { $in: ["new", "matched"] } }).limit(300);
   const jobs = [...fresh]
@@ -730,6 +759,7 @@ async function processFreshJobs(
     })
     .slice(0, limit);
   for (const job of jobs) {
+    if (Date.now() >= deadline) break;
     if (await dailyTargetReached(progress)) break;
     const lahoreJob = isLahoreJob(job, settings);
     if (waveBucketFull(progress, lahoreJob)) continue;
@@ -753,6 +783,7 @@ async function ensureDailyQuotas(
   settings: UserSettings,
   results: Array<{ jobId: string; status: string; score?: number; reason?: string }>,
   progress: PipelineProgress,
+  deadline = Date.now() + 52_000,
 ) {
   const houseJobs = await Job.find({
     source: { $in: ["pakistan-houses", "remote-houses"] },
@@ -765,6 +796,7 @@ async function ensureDailyQuotas(
   });
 
   for (const job of lahoreFirst) {
+    if (Date.now() >= deadline) break;
     if (await dailyTargetReached(progress)) break;
     const lahoreJob = isLahoreJob(job, settings);
     if (waveBucketFull(progress, lahoreJob)) continue;

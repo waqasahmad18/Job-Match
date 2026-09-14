@@ -1,4 +1,5 @@
 import { jobFingerprint } from "@/lib/fingerprint";
+import { fetchJson } from "@/lib/ingest/http";
 
 type RemoteOkJob = {
   id?: string | number;
@@ -65,19 +66,7 @@ export function normalizeRemoteOkJob(raw: RemoteOkJob) {
 }
 
 export async function fetchRemoteOkJobs(limit = 40) {
-  const response = await fetch("https://remoteok.com/api", {
-    headers: {
-      "User-Agent": "job-match-automation/1.0",
-      Accept: "application/json",
-    },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`RemoteOK request failed: ${response.status}`);
-  }
-
-  const payload = (await response.json()) as Array<RemoteOkJob | { legal?: string }>;
+  const payload = await fetchJson<Array<RemoteOkJob | { legal?: string }>>("https://remoteok.com/api");
   return payload
     .slice(1)
     .map((item) => normalizeRemoteOkJob(item as RemoteOkJob))

@@ -20,8 +20,10 @@ export async function POST(request: Request) {
   const result = await runPipeline({
     ingest: body.ingest !== false,
     ingestHouses: body.ingestHouses === true,
-    limit: Number(body.limit || 25),
-    sendBatch: Number(body.sendBatch || 12),
+    limit: Number(body.limit || 30),
+    sendBatch: Number(body.sendBatch || 8),
+    syncBounces: false,
+    source: "manual",
   });
   return NextResponse.json(result);
 }
