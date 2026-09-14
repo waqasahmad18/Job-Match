@@ -2,8 +2,8 @@ import { toJob, type NormalizedJob } from "@/lib/ingest/publicBoards";
 
 const SOFTWARE_TAGS = ["react", "next.js", "node", "javascript", "laravel", "python"];
 
-async function fetchJobicy(limit: number) {
-  const response = await fetch("https://jobicy.com/api/v2/remote-jobs?count=50&tag=javascript", {
+async function fetchJobicy(limit: number, extra = "") {
+  const response = await fetch(`https://jobicy.com/api/v2/remote-jobs?count=50&tag=javascript${extra}`, {
     headers: { Accept: "application/json", "User-Agent": "job-match-automation/1.0" },
     cache: "no-store",
   });
@@ -165,6 +165,7 @@ export async function fetchAggregatorJobs(limit = 40) {
   ];
   const results = await Promise.allSettled([
     fetchJobicy(limit),
+    fetchJobicy(limit, "&geo=Pakistan"),
     fetchHimalayas(limit),
     fetchMuse(limit),
     ...queries.map((query) => fetchJSearch(query, 15)),

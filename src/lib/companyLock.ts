@@ -67,7 +67,7 @@ export async function acquireMongoPipelineLock() {
   const col = mongoose.connection.db?.collection("pipelinelocks");
   if (!col) return true;
   const now = new Date();
-  const until = new Date(now.getTime() + 2 * 60 * 1000);
+  const until = new Date(now.getTime() + 70 * 1000);
   const filter = { _id: "pipeline", until: { $lt: now } };
   const stale = await col.findOneAndUpdate(filter as never, { $set: { until } });
   if (stale) return true;

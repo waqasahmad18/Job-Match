@@ -1,4 +1,4 @@
-import { extractApplyEmail, findCompanyApplyEmail } from "@/lib/extractEmail";
+import { extractApplyEmail } from "@/lib/extractEmail";
 import { toJob, type NormalizedJob } from "@/lib/ingest/publicBoards";
 
 const HOUSES = [
@@ -37,6 +37,10 @@ function houseJob(house: (typeof HOUSES)[number], email: string): NormalizedJob 
   });
 }
 
+export function seedRemoteSoftwareHouses() {
+  return HOUSES.map((house) => houseJob(house, "")).filter((job): job is NormalizedJob => Boolean(job));
+}
+
 async function readHouse(house: (typeof HOUSES)[number]): Promise<NormalizedJob[]> {
   try {
     const response = await fetch(house.url, {
@@ -49,13 +53,11 @@ async function readHouse(house: (typeof HOUSES)[number]): Promise<NormalizedJob[
     });
     const html = response.ok ? await response.text() : "";
     const text = html.replace(/<[^>]+>/g, " ");
-    const email =
-      extractApplyEmail(`${text} ${house.url}`) || (await findCompanyApplyEmail(house.url)) || "";
+    const email = extractApplyEmail(`${text} ${house.url}`) || "";
     const job = houseJob(house, email);
     return job ? [job] : [];
   } catch {
-    const email = (await findCompanyApplyEmail(house.url)) || "";
-    const job = houseJob(house, email);
+    const job = houseJob(house, "");
     return job ? [job] : [];
   }
 }

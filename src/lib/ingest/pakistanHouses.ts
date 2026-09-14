@@ -1,4 +1,4 @@
-import { extractApplyEmail, findCompanyApplyEmail } from "@/lib/extractEmail";
+import { extractApplyEmail } from "@/lib/extractEmail";
 import { toJob, type NormalizedJob } from "@/lib/ingest/publicBoards";
 
 const HOUSES = [
@@ -32,6 +32,18 @@ const HOUSES = [
   { company: "Tezo", url: "https://tezo.com/careers/", domain: "tezo.com" },
   { company: "Vizteck Solutions", url: "https://vizteck.com/careers/", domain: "vizteck.com" },
   { company: "i2c", url: "https://www.i2cinc.com/careers/", domain: "i2cinc.com" },
+  { company: "Xgrid", url: "https://xgrid.co/careers", domain: "xgrid.co" },
+  { company: "Dubizzle Labs", url: "https://www.dubizzlelabs.com/careers", domain: "dubizzlelabs.com" },
+  { company: "Bazaar Technologies", url: "https://bazaar.technology/careers", domain: "bazaar.technology" },
+  { company: "Cinnova", url: "https://cinnova.com/careers", domain: "cinnova.com" },
+  { company: "Rolustech", url: "https://www.rolustech.com/careers", domain: "rolustech.com" },
+  { company: "Ovex Technologies", url: "https://ovextech.com/careers", domain: "ovextech.com" },
+  { company: "Coding Crafts", url: "https://codingcrafts.io/careers", domain: "codingcrafts.io" },
+  { company: "NayaPay", url: "https://www.nayapay.com/careers", domain: "nayapay.com" },
+  { company: "EOcean", url: "https://eocean.com/careers", domain: "eocean.com" },
+  { company: "TPS", url: "https://www.tpsworldwide.com/careers", domain: "tpsworldwide.com" },
+  { company: "Afiniti", url: "https://www.afiniti.com/careers", domain: "afiniti.com" },
+  { company: "ibex", url: "https://www.ibex.co/careers", domain: "ibex.co" },
 ];
 
 const ROLE_RE = /full\s*stack|mern|react|next\.js|node\.js|laravel|software engineer|software developer|php developer/i;
@@ -66,6 +78,12 @@ function houseJob(
   });
 }
 
+export function seedPakistanSoftwareHouses() {
+  return HOUSES.map((house) =>
+    houseJob(house, "Full Stack Developer", "", `${house.company} is hiring full-stack developers in Lahore.`),
+  ).filter((job): job is NormalizedJob => Boolean(job));
+}
+
 async function readHouse(house: (typeof HOUSES)[number]): Promise<NormalizedJob[]> {
   try {
     const response = await fetch(house.url, {
@@ -78,8 +96,7 @@ async function readHouse(house: (typeof HOUSES)[number]): Promise<NormalizedJob[
     });
     const html = response.ok ? await response.text() : "";
     const text = html ? cleanHtml(html) : "";
-    const email =
-      extractApplyEmail(`${text} ${house.url}`) || (await findCompanyApplyEmail(house.url)) || "";
+    const email = extractApplyEmail(`${text} ${house.url}`) || "";
     const title =
       [...new Set([...text.matchAll(TITLE_RE)].map((match) => match[1].trim()))].find((item) =>
         ROLE_RE.test(item),
@@ -92,11 +109,10 @@ async function readHouse(house: (typeof HOUSES)[number]): Promise<NormalizedJob[
     );
     return job ? [job] : [];
   } catch {
-    const email = (await findCompanyApplyEmail(house.url)) || "";
     const job = houseJob(
       house,
       "Full Stack Developer",
-      email,
+      "",
       `${house.company} is hiring full-stack developers in Lahore.`,
     );
     return job ? [job] : [];

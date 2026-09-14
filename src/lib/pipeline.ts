@@ -613,7 +613,6 @@ export async function runPipeline(options?: {
   }
   const results: Array<{ jobId: string; status: string; score?: number; reason?: string }> = [];
   await releaseStuckReservations();
-  const bounces = await syncGmailBounces();
   const progress: PipelineProgress = {
     sentThisRun: 0,
     sentThisRunLahore: 0,
@@ -622,6 +621,7 @@ export async function runPipeline(options?: {
     dailyTarget: settings.dailySendLimit || DAILY_SEND_TARGET,
   };
   const processLimit = options?.limit || PROCESS_BATCH_PER_RUN;
+  let ingestStats = { fetched: 0, kept: 0, inserted: 0, dropped: 0, errors: [] as string[] };
 
   await processFreshJobs(settings, results, processLimit, progress);
   if (!(await dailyTargetReached(progress))) {
@@ -629,24 +629,22 @@ export async function runPipeline(options?: {
   }
 
   if (options?.ingest !== false) {
-    const { fetchRemoteOkJobs } = await import("@/lib/ingest/remoteok");
-    const { fetchPublicBoardJobs } = await import("@/lib/ingest/publicBoards");
     try {
-      const { fetchPakistanJobs } = await import("@/lib/ingest/pakistanJobs");
-      const { fetchAggregatorJobs } = await import("@/lib/ingest/aggregators");
-      const incoming = [
-        ...(await fetchPakistanJobs(options?.limit || 20)),
-        ...(await fetchAggregatorJobs(options?.limit || 15)),
-        ...(await fetchRemoteOkJobs(options?.limit || 15)),
-        ...(await fetchPublicBoardJobs(options?.limit || 15)),
-      ];
-      if (options?.ingestHouses !== false) {
-        const { fetchPakistanSoftwareHouses } = await import("@/lib/ingest/pakistanHouses");
-        const { fetchRemoteSoftwareHouses } = await import("@/lib/ingest/remoteHouses");
-        incoming.unshift(...(await fetchPakistanSoftwareHouses()), ...(await fetchRemoteSoftwareHouses()));
-      }
-      for (const job of incoming) {
-        await upsertIncomingJob(job);
+      const { collectIncomingJobs } = await import("@/lib/ingest/collect");
+      const collected = await collectIncomingJobs(settings, {
+        ingestHouses: options?.ingestHouses === true,
+        limit: options?.limit || 25,
+      });
+      ingestStats = {
+        fetched: collected.fetched,
+        kept: collected.kept,
+        inserted: 0,
+        dropped: collected.dropped,
+        errors: collected.errors,
+      };
+      for (const job of collected.jobs) {
+        const outcome = await upsertIncomingJob(job);
+        if (outcome === "inserted") ingestStats.inserted += 1;
       }
     } catch (error) {
       await SystemLog.create({
@@ -654,6 +652,7 @@ export async function runPipeline(options?: {
         message: "Job ingestion failed",
         context: { error: error instanceof Error ? error.message : String(error) },
       });
+      ingestStats.errors.push(error instanceof Error ? error.message : String(error));
     }
 
     if (!(await dailyTargetReached(progress))) {
@@ -663,6 +662,12 @@ export async function runPipeline(options?: {
       }
     }
   }
+
+  const bounces = await syncGmailBounces().catch(() => ({
+    checked: false,
+    bounced: 0,
+    released: 0,
+  }));
 
   const locationCounts = await sentTodayLocationCounts(settings);
   return {
@@ -676,6 +681,11 @@ export async function runPipeline(options?: {
     sentThisRun: progress.sentThisRun,
     lahoreTarget: LAHORE_DAILY_SEND_TARGET,
     remoteTarget: REMOTE_DAILY_SEND_TARGET,
+    ingested: ingestStats.fetched,
+    ingestedKept: ingestStats.kept,
+    ingestedNew: ingestStats.inserted,
+    ingestedDropped: ingestStats.dropped,
+    ingestErrors: ingestStats.errors,
     bounces,
     results,
   };
@@ -685,18 +695,21 @@ export async function runPipeline(options?: {
   }
 }
 
-async function upsertIncomingJob(job: Record<string, unknown> & { fingerprint: string; description?: string; location?: string; postedAt?: Date }) {
+async function upsertIncomingJob(
+  job: Record<string, unknown> & { fingerprint: string; description?: string; location?: string; postedAt?: Date },
+) {
   const existing = await Job.findOne({ fingerprint: job.fingerprint });
   if (!existing) {
     await Job.create(job);
-    return;
+    return "inserted" as const;
   }
-  if (existing.status === "sent") return;
+  if (existing.status === "sent") return "skipped" as const;
   existing.description = String(job.description || existing.description);
   existing.location = String(job.location || existing.location);
   existing.status = "new";
   if (job.postedAt) existing.postedAt = job.postedAt;
   await existing.save();
+  return "updated" as const;
 }
 
 async function processFreshJobs(
@@ -705,7 +718,7 @@ async function processFreshJobs(
   limit: number,
   progress: PipelineProgress,
 ) {
-  const fresh = await Job.find({ status: "new" }).limit(300);
+  const fresh = await Job.find({ status: { $in: ["new", "matched"] } }).limit(300);
   const jobs = [...fresh]
     .sort((left, right) => {
       const leftRank = locationPriority(classifyLocation(left, settings).class);

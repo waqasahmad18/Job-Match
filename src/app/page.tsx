@@ -39,9 +39,12 @@ export default function DashboardPage() {
       const data = await res.json();
       if (!res.ok) {
         setMessage(data.error || "Pipeline failed.");
+      } else if (data.skipped) {
+        setMessage(data.skipped);
+        await load();
       } else {
         setMessage(
-          `Processed ${data.processed} jobs. Sent today ${data.sentToday ?? 0}/${data.dailyTarget ?? 50} (Lahore ${data.lahoreToday ?? 0}/${data.lahoreTarget ?? 25}, remote ${data.remoteToday ?? 0}/${data.remoteTarget ?? 25}). SMTP ${data.smtpReady ? "on" : "off"}.`,
+          `Fetched ${data.ingestedKept ?? 0} allowed jobs (${data.ingestedNew ?? 0} new, dropped ${data.ingestedDropped ?? 0} off-location). Processed ${data.processed} jobs. Sent today ${data.sentToday ?? 0}/${data.dailyTarget ?? 50} (Lahore ${data.lahoreToday ?? 0}/${data.lahoreTarget ?? 25}, remote ${data.remoteToday ?? 0}/${data.remoteTarget ?? 25}). SMTP ${data.smtpReady ? "on" : "off"}.`,
         );
         await load();
       }
