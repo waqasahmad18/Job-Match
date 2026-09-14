@@ -8,3 +8,15 @@ export function startOfPakistanDay(now = new Date()) {
   }).format(now);
   return new Date(`${parts}T00:00:00+05:00`);
 }
+
+export function formatPakistanDateTime(value?: Date | string | null) {
+  if (!value) return "";
+  return new Date(value).toLocaleString("en-PK", {
+    timeZone: "Asia/Karachi",
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}

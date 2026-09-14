@@ -34,3 +34,12 @@ Set these in the Vercel project before deploy. Do not commit `.env.local`.
 - `RECENT_JOB_MAX_DAYS` = `14`
 - `LAHORE_DAILY_SEND_MAX` = `25`
 - `REMOTE_DAILY_SEND_TARGET` = `25`
+
+## Daily automation
+
+Vercel Hobby allows one cron per day. It is set to `0 3 * * *` UTC, which is the **8:00–8:59 AM Pakistan** hour. Vercel may fire anytime inside that hour.
+
+Later waves use GitHub Actions. In the GitHub repo go to **Settings → Secrets and variables → Actions** and add:
+
+- `CRON_SECRET` — same value as the Vercel `CRON_SECRET`
+- `APP_URL` — optional, defaults to `https://job-match-tan.vercel.app`

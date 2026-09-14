@@ -2,8 +2,8 @@ import { DAILY_SEND_TARGET, LAHORE_DAILY_SEND_TARGET, REMOTE_DAILY_SEND_TARGET }
 import { getOrCreateSettings } from "@/lib/settings";
 import { pingMongo } from "@/lib/mongodb";
 import { sentTodayCount, sentTodayLocationCounts } from "@/lib/pipeline";
-import { Application, Job, JobMatch } from "@/models";
-import { startOfPakistanDay } from "@/lib/pakistanDay";
+import { Application, Job, JobMatch, SystemLog } from "@/models";
+import { formatPakistanDateTime, startOfPakistanDay } from "@/lib/pakistanDay";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -24,6 +24,9 @@ export async function GET() {
       ignoredRejected: 0,
       matchThreshold: 75,
       mongoConnected: false,
+      lastCronAt: "",
+      lastCronLabel: "Never",
+      lastCronNote: "Automatic hunt has not logged a run yet.",
     });
   }
 
@@ -32,7 +35,7 @@ export async function GET() {
   const todayJobs = await Job.find({ collectedAt: { $gte: start } }).select("_id");
   const todayIds = todayJobs.map((item) => item._id);
 
-  const [jobsToday, jobsWaiting, relevantJobs, relevantWaitingEmail, applicationsSent, ignoredRejected, sentToday, locationCounts] =
+  const [jobsToday, jobsWaiting, relevantJobs, relevantWaitingEmail, applicationsSent, ignoredRejected, sentToday, locationCounts, lastCron] =
     await Promise.all([
       Job.countDocuments({ collectedAt: { $gte: start } }),
       Job.countDocuments({ status: "new", collectedAt: { $gte: start } }),
@@ -46,7 +49,21 @@ export async function GET() {
       Application.countDocuments({ status: { $in: ["rejected", "skipped"] } }),
       sentTodayCount(),
       sentTodayLocationCounts(settings),
+      SystemLog.findOne({ message: { $in: ["Cron run completed", "Cron run failed"] } }).sort({ createdAt: -1 }),
     ]);
+
+  const cronContext = (lastCron?.context || {}) as {
+    processed?: number;
+    sentThisRun?: number;
+    skipped?: string;
+    error?: string;
+    source?: string;
+  };
+  const lastCronNote = lastCron
+    ? lastCron.message === "Cron run failed"
+      ? cronContext.error || "Automatic hunt failed"
+      : cronContext.skipped || `Processed ${cronContext.processed ?? 0}. Sent this run: ${cronContext.sentThisRun ?? 0}.`
+    : "Automatic hunt has not logged a run yet. Next Vercel run is 8:00–8:59 AM Pakistan time.";
 
   return NextResponse.json({
     jobsToday,
@@ -63,5 +80,8 @@ export async function GET() {
     ignoredRejected,
     matchThreshold: settings.matchThreshold,
     mongoConnected: true,
+    lastCronAt: lastCron?.createdAt ? new Date(lastCron.createdAt).toISOString() : "",
+    lastCronLabel: lastCron?.createdAt ? formatPakistanDateTime(lastCron.createdAt) : "Never",
+    lastCronNote,
   });
 }

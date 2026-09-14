@@ -104,6 +104,11 @@ export default function DashboardPage() {
         />
         <StatCard label="Ignored / rejected" value={stats?.ignoredRejected ?? "—"} />
         <StatCard label="Match threshold" value={`${stats?.matchThreshold ?? settings?.matchThreshold ?? 75}%`} />
+        <StatCard
+          label="Last auto hunt"
+          value={stats?.lastCronLabel ?? "Never"}
+          hint={stats?.lastCronNote || "Next Vercel run is 8:00–8:59 AM Pakistan time"}
+        />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
@@ -111,7 +116,7 @@ export default function DashboardPage() {
           <h3 className="text-lg font-semibold">Apply rules</h3>
           <p className="mt-2 text-sm text-[var(--muted)]">
             Daily target stays equal: 25 Lahore (onsite + Lahore remote) and 25 worldwide remote.
-            Vercel hunts and sends at 3:00 PM Pakistan time so we can confirm the run does not stall.
+            Vercel hunts and sends every day in the 8:00 AM Pakistan hour. Extra waves can run later if GitHub Actions has CRON_SECRET.
             Gmail bounce replies mark invalid addresses, then a confirmed hiring email is used to resend.
             Indeed/Glassdoor login walls are not scraped.
           </p>

@@ -112,4 +112,7 @@ export type DashboardStats = {
   ignoredRejected: number;
   matchThreshold: number;
   mongoConnected: boolean;
+  lastCronAt?: string;
+  lastCronLabel?: string;
+  lastCronNote?: string;
 };
