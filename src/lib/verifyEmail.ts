@@ -40,9 +40,7 @@ export function hiringAliases(emailOrHost: string) {
 }
 
 export function hostAlreadyBounced(emailOrHost: string, bounced: Set<string>) {
-  const host = emailOrHost.includes("@") ? emailOrHost.split("@")[1] : emailOrHost.toLowerCase();
-  if (!host) return false;
-  return [...bounced].some((email) => email.endsWith(`@${host}`));
+  return bounced.has(normalizeEmail(emailOrHost));
 }
 
 export async function pickDeliverableEmail(candidates: Array<string | null | undefined>, bounced: Set<string>) {

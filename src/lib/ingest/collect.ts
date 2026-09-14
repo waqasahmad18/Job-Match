@@ -8,27 +8,35 @@ export async function collectIncomingJobs(
 ) {
   const limit = options?.limit || 25;
   const errors: string[] = [];
-  const { fetchAggregatorJobs } = await import("@/lib/ingest/aggregators");
-  const { fetchRemoteOkJobs } = await import("@/lib/ingest/remoteok");
-  const { fetchPublicBoardJobs } = await import("@/lib/ingest/publicBoards");
   const { seedPakistanSoftwareHouses, fetchPakistanSoftwareHouses } = await import(
     "@/lib/ingest/pakistanHouses"
   );
   const { seedRemoteSoftwareHouses, fetchRemoteSoftwareHouses } = await import("@/lib/ingest/remoteHouses");
 
-  const settled = await Promise.allSettled([
-    fetchAggregatorJobs(limit),
-    fetchRemoteOkJobs(limit),
-    fetchPublicBoardJobs(limit),
+  const incoming: NormalizedJob[] = [...seedPakistanSoftwareHouses(), ...seedRemoteSoftwareHouses()];
+
+  const boardFetch = (async () => {
+    const { fetchAggregatorJobs } = await import("@/lib/ingest/aggregators");
+    const { fetchRemoteOkJobs } = await import("@/lib/ingest/remoteok");
+    const { fetchPublicBoardJobs } = await import("@/lib/ingest/publicBoards");
+    const settled = await Promise.allSettled([
+      fetchAggregatorJobs(limit),
+      fetchRemoteOkJobs(limit),
+      fetchPublicBoardJobs(limit),
+    ]);
+    const jobs: NormalizedJob[] = [];
+    for (const result of settled) {
+      if (result.status === "fulfilled") jobs.push(...result.value);
+      else errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
+    }
+    return jobs;
+  })();
+
+  const boards = await Promise.race([
+    boardFetch,
+    new Promise<NormalizedJob[]>((resolve) => setTimeout(() => resolve([]), 12_000)),
   ]);
-
-  const incoming: NormalizedJob[] = [];
-  for (const result of settled) {
-    if (result.status === "fulfilled") incoming.push(...result.value);
-    else errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
-  }
-
-  incoming.push(...seedPakistanSoftwareHouses(), ...seedRemoteSoftwareHouses());
+  incoming.push(...boards);
 
   if (options?.ingestHouses) {
     const houses = await Promise.allSettled([fetchPakistanSoftwareHouses(), fetchRemoteSoftwareHouses()]);

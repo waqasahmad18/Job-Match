@@ -396,7 +396,45 @@ export async function processJob(
     return { status: "skipped", score, reason: "Daily worldwide-remote cap reached." };
   }
 
+  const cvs = await CvVersion.find();
+  const cv = selectCvVersion(job, cvs) || getMasterCv();
+  const attachment = resolveCvAttachment(cv);
+  const email = generateApplicationEmail({
+    settings,
+    job,
+    matchedSkills,
+  });
+
+  async function applyOnCareersForm() {
+    if (!attachment || !job.sourceUrl?.startsWith("http")) return null;
+    const { applyOnCareersBoard } = await import("@/lib/careersApply");
+    const board = await applyOnCareersBoard({
+      sourceUrl: job.sourceUrl,
+      settings,
+      cvPath: attachment.path,
+      cvFileName: attachment.filename,
+      coverLetter: email.body,
+    });
+    if (!board.ok) return board;
+    job.status = "sent";
+    await job.save();
+    await logDecision({
+      jobId: job._id,
+      matchId: match._id,
+      cvId: mongoCvId(cv),
+      status: "sent",
+      emailTo: `careers-form@${board.via}.io`,
+      emailSubject: email.subject,
+      emailBody: email.body,
+      applyUrl: board.jobUrl || job.sourceUrl,
+      reason: `CV submitted on the ${board.via} careers page.`,
+    });
+    return board;
+  }
+
   if (isCareersPageOnly(job.company) && job.sourceUrl?.startsWith("http")) {
+    const board = await applyOnCareersForm();
+    if (board?.ok) return { status: "sent", score, reason: "CV submitted on the careers page." };
     job.status = "matched";
     await job.save();
     await logDecision({
@@ -415,20 +453,20 @@ export async function processJob(
   const fallback = fallbackApplyEmail(job.sourceUrl, skip);
   const hiringEmail = await pickDeliverableEmail([extracted, fallback], bounced);
   if (!hiringEmail) {
+    const board = await applyOnCareersForm();
+    if (board?.ok) return { status: "sent", score, reason: "CV submitted on the careers page." };
     job.status = "matched";
     await job.save();
     await logDecision({
       jobId: job._id,
       matchId: match._id,
       status: "skipped",
-      reason: "No confirmed hiring email. Bounced or guessed addresses were skipped.",
+      applyUrl: job.sourceUrl?.startsWith("http") ? job.sourceUrl : undefined,
+      reason: "No confirmed hiring email. Careers form was not Greenhouse/Lever.",
     });
     return { status: "skipped", score, reason: "No confirmed hiring email." };
   }
 
-  const cvs = await CvVersion.find();
-  const cv = selectCvVersion(job, cvs) || getMasterCv();
-  const attachment = resolveCvAttachment(cv);
   if (!attachment) {
     job.status = "matched";
     await job.save();
@@ -442,11 +480,6 @@ export async function processJob(
     return { status: "skipped", score, reason: "CV file is missing, so the email was not sent." };
   }
 
-  const email = generateApplicationEmail({
-    settings,
-    job,
-    matchedSkills,
-  });
   const to = hiringEmail;
 
   if (await alreadyApproachedCompany({ company: job.company, email: to, cooldownDays: settings.cooldownDays || 14 })) {
@@ -749,6 +782,7 @@ async function processFreshJobs(
 ) {
   const fresh = await Job.find({ status: { $in: ["new", "matched"] } }).limit(300);
   const jobs = [...fresh]
+    .filter((job) => classifyLocation(job, settings).allowed)
     .sort((left, right) => {
       const leftRank = locationPriority(classifyLocation(left, settings).class);
       const rightRank = locationPriority(classifyLocation(right, settings).class);

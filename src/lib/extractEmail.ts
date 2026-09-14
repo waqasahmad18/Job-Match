@@ -1,4 +1,4 @@
-const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/g;
 const IGNORED_HOSTS = [
   "example.com",
   "email.com",
@@ -10,7 +10,6 @@ const IGNORED_HOSTS = [
 ];
 const IGNORED_LOCAL =
   /^(support|noreply|no-reply|billing|privacy|legal|security|mailer|notifications|unsubscribe|webmaster)/i;
-const CONTACT_PATHS = ["/contact-us", "/contact", "/contactus", "/get-in-touch", "/careers", "/about-us"];
 const FETCH_HEADERS = {
   Accept: "text/html,application/xhtml+xml",
   "User-Agent": "job-match-automation/1.0",
@@ -34,25 +33,11 @@ function companyOrigins(sourceUrl: string) {
   }
 }
 
-function contactLinks(html: string, origin: string) {
-  const hrefs = [...html.matchAll(/href=["']([^"']+)["']/gi)].map((match) => match[1]);
-  const found: string[] = [];
-  for (const href of hrefs) {
-    if (!/contact|get-in-touch|careers|about/i.test(href)) continue;
-    try {
-      found.push(new URL(href, origin).href);
-    } catch {
-      continue;
-    }
-  }
-  return found;
-}
-
 async function readPage(url: string) {
   try {
     const response = await fetch(url, {
       headers: FETCH_HEADERS,
-      signal: AbortSignal.timeout(7000),
+      signal: AbortSignal.timeout(3500),
       cache: "no-store",
       redirect: "follow",
     });
@@ -66,6 +51,11 @@ async function readPage(url: string) {
 export function extractApplyEmail(text: string, skipEmails: string[] = []) {
   const decoded = decodeObfuscated(text);
   const skip = new Set(skipEmails.map((item) => item.toLowerCase()).filter(Boolean));
+  const mailto = decoded.match(/mailto:([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i);
+  if (mailto?.[1] && !skip.has(mailto[1].toLowerCase())) {
+    const email = mailto[1].toLowerCase();
+    if (!IGNORED_LOCAL.test(email.split("@")[0] || "")) return email;
+  }
   const jobLine = decoded.match(
     /(?:job application|for jobs|apply(?: to)?(?: here)?|careers? team)[:\s]+([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i,
   );
@@ -101,25 +91,17 @@ export async function findCompanyApplyEmail(sourceUrl?: string, skipEmails: stri
   const origins = companyOrigins(sourceUrl);
   const queue = [sourceUrl];
   for (const origin of origins) {
-    queue.push(origin);
-    for (const path of CONTACT_PATHS) queue.push(`${origin}${path}`);
+    queue.push(`${origin}/contact-us`, `${origin}/contact`, `${origin}/careers`);
   }
 
-  const seen = new Set<string>();
-  let fetched = 0;
-  for (const url of queue) {
-    if (fetched >= 6 || seen.has(url)) continue;
-    seen.add(url);
-    const html = await readPage(url);
-    fetched += 1;
+  const urls = [...new Set(queue)].slice(0, 4);
+  const pages = await Promise.all(urls.map((url) => readPage(url)));
+  for (const html of pages) {
     if (!html) continue;
-    const email = extractApplyEmail(html.replace(/<[^>]+>/g, " "), skipEmails);
+    const email = extractApplyEmail(`${html} ${html.replace(/<[^>]+>/g, " ")}`, skipEmails);
     if (email) {
       pageEmailCache.set(cacheKey, email);
       return email;
-    }
-    for (const link of contactLinks(html, url).slice(0, 2)) {
-      if (!seen.has(link)) queue.push(link);
     }
   }
 
