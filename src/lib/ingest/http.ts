@@ -1,4 +1,4 @@
-const FETCH_MS = 8_000;
+const FETCH_MS = 5_000;
 
 export async function fetchJson<T>(url: string, headers: Record<string, string> = {}): Promise<T> {
   const response = await fetch(url, {

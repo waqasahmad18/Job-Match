@@ -3,10 +3,6 @@ import { toJob, type NormalizedJob } from "@/lib/ingest/publicBoards";
 
 const SOFTWARE_TAGS = ["react", "next.js", "node", "javascript", "laravel", "python", "full stack", "mern"];
 
-/**
- * Google Jobs–style results via JSearch (RapidAPI).
- * Set RAPIDAPI_KEY in Vercel / .env.local — do not scrape google.com HTML.
- */
 const LAHORE_FULLSTACK_QUERIES = [
   "full stack developer in Lahore, Pakistan",
   "mern stack developer in Lahore, Pakistan",
@@ -66,13 +62,17 @@ async function fetchJSearch(query: string, limit: number) {
     .slice(0, limit);
 }
 
-export async function fetchLahoreGoogleJobs(limit = 40) {
+/** Only 2 rotating Google queries per run so Vercel does not time out. */
+export async function fetchLahoreGoogleJobs(limit = 20) {
   if (!process.env.RAPIDAPI_KEY?.trim()) {
     return { jobs: [] as NormalizedJob[], error: "RAPIDAPI_KEY missing — Google Jobs (JSearch) skipped." };
   }
-  const results = await Promise.allSettled(
-    LAHORE_FULLSTACK_QUERIES.map((query) => fetchJSearch(query, Math.max(8, Math.ceil(limit / 4)))),
-  );
+  const start = Math.floor(Date.now() / (3 * 60 * 60 * 1000)) % LAHORE_FULLSTACK_QUERIES.length;
+  const queries = [
+    LAHORE_FULLSTACK_QUERIES[start],
+    LAHORE_FULLSTACK_QUERIES[(start + 1) % LAHORE_FULLSTACK_QUERIES.length],
+  ];
+  const results = await Promise.allSettled(queries.map((query) => fetchJSearch(query, Math.max(6, Math.ceil(limit / 2)))));
   const jobs: NormalizedJob[] = [];
   const errors: string[] = [];
   for (const result of results) {

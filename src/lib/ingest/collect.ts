@@ -2,31 +2,32 @@ import { classifyLocation } from "@/lib/matching/location";
 import type { UserSettings } from "@/types";
 import type { NormalizedJob } from "@/lib/ingest/publicBoards";
 
+/**
+ * Vercel Hobby hard-stops at ~60s. Keep network work small so CVs can still send.
+ */
 export async function collectIncomingJobs(
   settings: UserSettings,
   options?: { ingestHouses?: boolean; limit?: number },
 ) {
-  const limit = Math.max(options?.limit || 40, 40);
+  const limit = Math.min(Math.max(options?.limit || 30, 20), 35);
   const errors: string[] = [];
   const { seedPakistanSoftwareHouses, fetchPakistanSoftwareHouses } = await import(
     "@/lib/ingest/pakistanHouses"
   );
-  const { seedRemoteSoftwareHouses, fetchRemoteSoftwareHouses } = await import("@/lib/ingest/remoteHouses");
+  const { seedRemoteSoftwareHouses } = await import("@/lib/ingest/remoteHouses");
   const { fetchAggregatorJobs } = await import("@/lib/ingest/aggregators");
   const { fetchRemoteOkJobs } = await import("@/lib/ingest/remoteok");
   const { fetchPublicBoardJobs } = await import("@/lib/ingest/publicBoards");
   const { fetchLahoreGoogleJobs } = await import("@/lib/ingest/googleJobs");
 
-  // Always seed every Lahore + remote house so Collect targets the full house list.
   const incoming: NormalizedJob[] = [...seedPakistanSoftwareHouses(), ...seedRemoteSoftwareHouses()];
 
   const settled = await Promise.allSettled([
-    fetchLahoreGoogleJobs(limit),
-    fetchAggregatorJobs(limit),
-    fetchRemoteOkJobs(limit),
-    fetchPublicBoardJobs(limit),
-    // Fresh careers-page scrape for a rotating Lahore batch (emails + open roles).
-    fetchPakistanSoftwareHouses(24),
+    fetchLahoreGoogleJobs(Math.min(limit, 16)),
+    fetchRemoteOkJobs(15),
+    fetchPublicBoardJobs(12),
+    fetchAggregatorJobs(12),
+    fetchPakistanSoftwareHouses(options?.ingestHouses ? 10 : 6),
   ]);
 
   for (const result of settled) {
@@ -35,19 +36,10 @@ export async function collectIncomingJobs(
       continue;
     }
     const value = result.value as NormalizedJob[] | { jobs: NormalizedJob[]; error?: string };
-    if (Array.isArray(value)) {
-      incoming.push(...value);
-    } else {
+    if (Array.isArray(value)) incoming.push(...value);
+    else {
       incoming.push(...value.jobs);
       if (value.error) errors.push(value.error);
-    }
-  }
-
-  if (options?.ingestHouses) {
-    const houses = await Promise.allSettled([fetchPakistanSoftwareHouses(30), fetchRemoteSoftwareHouses()]);
-    for (const result of houses) {
-      if (result.status === "fulfilled") incoming.push(...result.value);
-      else errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
     }
   }
 
@@ -64,7 +56,6 @@ export async function collectIncomingJobs(
     jobs.push(job);
   }
 
-  // Lahore houses + Google Jobs first, then worldwide remote.
   jobs.sort((left, right) => {
     const rank = (job: NormalizedJob) => {
       if (job.source === "pakistan-houses") return 0;

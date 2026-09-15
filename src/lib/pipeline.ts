@@ -677,13 +677,13 @@ export async function runPipeline(options?: {
     };
   }
 
-  const deadline = Date.now() + 52_000;
+  const deadline = Date.now() + 50_000;
   let mongoLocked = false;
   try {
   const { settings } = await getOrCreateSettings();
   mongoLocked = await acquireMongoPipelineLock();
   if (!mongoLocked) {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 800));
     mongoLocked = await acquireMongoPipelineLock();
   }
   if (!mongoLocked) {
@@ -726,7 +726,54 @@ export async function runPipeline(options?: {
         dropped: collected.dropped,
         errors: collected.errors,
       };
-      for (const job of collected.jobs) {
+
+      // Fast path for seeded houses: one query for existing fingerprints, insert only new ones.
+      const houseJobs = collected.jobs.filter(
+        (job) => job.source === "pakistan-houses" || job.source === "remote-houses",
+      );
+      const boardJobs = collected.jobs.filter(
+        (job) => job.source !== "pakistan-houses" && job.source !== "remote-houses",
+      );
+      const existingHouse = await Job.find({
+        source: { $in: ["pakistan-houses", "remote-houses"] },
+      })
+        .select("fingerprint status description")
+        .lean();
+      const houseByFp = new Map(existingHouse.map((row) => [row.fingerprint, row]));
+      const toInsert: typeof houseJobs = [];
+      for (const job of houseJobs) {
+        const prev = houseByFp.get(job.fingerprint);
+        if (!prev) {
+          toInsert.push(job);
+          continue;
+        }
+        const hasNewEmail = /Apply email:\s*[a-z0-9._%+-]+@/i.test(job.description || "");
+        const hadEmail = /Apply email:\s*[a-z0-9._%+-]+@/i.test(String(prev.description || ""));
+        if (hasNewEmail && !hadEmail && prev.status !== "sent") {
+          await Job.updateOne(
+            { fingerprint: job.fingerprint },
+            {
+              $set: {
+                description: job.description,
+                status: prev.status === "processed" || prev.status === "rejected" ? "matched" : prev.status,
+              },
+            },
+          );
+        }
+      }
+      if (toInsert.length) {
+        try {
+          await Job.insertMany(toInsert, { ordered: false });
+          ingestStats.inserted += toInsert.length;
+        } catch {
+          for (const job of toInsert) {
+            const outcome = await upsertIncomingJob(job);
+            if (outcome === "inserted") ingestStats.inserted += 1;
+          }
+        }
+      }
+      for (const job of boardJobs) {
+        if (Date.now() > deadline - 32_000) break;
         const outcome = await upsertIncomingJob(job);
         if (outcome === "inserted") ingestStats.inserted += 1;
       }
