@@ -93,59 +93,12 @@ async function fetchMuse(limit: number) {
     .slice(0, limit);
 }
 
-async function fetchJSearch(query: string, limit: number) {
-  const key = process.env.RAPIDAPI_KEY;
-  if (!key) return [];
-  const url = new URL("https://jsearch.p.rapidapi.com/search");
-  url.searchParams.set("query", query);
-  url.searchParams.set("page", "1");
-  url.searchParams.set("num_pages", "1");
-  url.searchParams.set("country", "pk");
-  const payload = await fetchJson<{
-    data?: Array<{
-      job_id?: string;
-      job_title?: string;
-      employer_name?: string;
-      job_city?: string;
-      job_country?: string;
-      job_description?: string;
-      job_apply_link?: string;
-      job_posted_at_datetime_utc?: string;
-    }>;
-  }>(url.toString(), {
-    "X-RapidAPI-Key": key,
-    "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
-  });
-  return (payload.data || [])
-    .map((item) =>
-      toJob({
-        source: "jsearch",
-        externalId: item.job_id,
-        sourceUrl: item.job_apply_link || "",
-        title: item.job_title || "",
-        company: item.employer_name || "",
-        location: [item.job_city, item.job_country].filter(Boolean).join(", "),
-        description: item.job_description || "",
-        tags: SOFTWARE_TAGS,
-        postedAt: item.job_posted_at_datetime_utc ? new Date(item.job_posted_at_datetime_utc) : undefined,
-      }),
-    )
-    .filter((job): job is NormalizedJob => Boolean(job))
-    .slice(0, limit);
-}
-
 export async function fetchAggregatorJobs(limit = 40) {
-  const queries = [
-    "full stack developer in Lahore, Pakistan",
-    "react next.js developer in Lahore, Pakistan",
-    "laravel developer in Lahore, Pakistan",
-  ];
   const results = await Promise.allSettled([
     fetchJobicy(limit),
     fetchJobicy(limit, "&geo=Pakistan"),
     fetchHimalayas(limit),
     fetchMuse(limit),
-    ...queries.map((query) => fetchJSearch(query, 15)),
   ]);
   return results.flatMap((result) => (result.status === "fulfilled" ? result.value : [])).slice(0, Math.max(limit * 3, 80));
 }

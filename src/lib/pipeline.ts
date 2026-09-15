@@ -365,7 +365,7 @@ export async function processJob(
     return { status: "duplicate", score, reason: "Company already approached." };
   }
 
-  if (await alreadySkippedNoEmailToday(job.company) && job.source !== "remote-houses") {
+  if (await alreadySkippedNoEmailToday(job.company) && job.source !== "remote-houses" && job.source !== "pakistan-houses") {
     job.status = "processed";
     await job.save();
     return { status: "skipped", score, reason: "Already checked today — no hiring email on careers page." };
@@ -423,10 +423,17 @@ export async function processJob(
     if (!attachment || !job.sourceUrl?.startsWith("http")) return null;
     const source = String(job.source || "");
     const { remoteHouseAts } = await import("@/lib/ingest/remoteHouses");
-    const preferredAts = source === "remote-houses" ? remoteHouseAts(job.company) : null;
+    const { pakistanHouseAts } = await import("@/lib/ingest/pakistanHouses");
+    const preferredAts =
+      source === "remote-houses"
+        ? remoteHouseAts(job.company)
+        : source === "pakistan-houses"
+          ? pakistanHouseAts(job.company)
+          : null;
     if (
       source !== "pakistan-houses" &&
       source !== "remote-houses" &&
+      source !== "jsearch" &&
       !preferredAts &&
       !/greenhouse|lever\.co|ashbyhq/i.test(job.sourceUrl)
     ) {
@@ -458,8 +465,8 @@ export async function processJob(
     return board;
   }
 
-  // Worldwide remote houses: try Greenhouse/Lever before giving up on missing emails.
-  if (job.source === "remote-houses") {
+  // Lahore + worldwide houses: try ATS form before requiring a mailbox.
+  if (job.source === "remote-houses" || job.source === "pakistan-houses") {
     const board = await applyOnCareersForm();
     if (board?.ok) return { status: "sent", score, reason: "CV submitted on the careers page." };
   }
@@ -481,9 +488,11 @@ export async function processJob(
 
   const bounced = await loadBouncedEmails();
   const skip = [settings.applicantEmail, ...bounced];
+  const { pakistanHouseEmail } = await import("@/lib/ingest/pakistanHouses");
+  const curated = job.source === "pakistan-houses" ? pakistanHouseEmail(job.company) : "";
   const extracted = await extractApplyEmailFromListing(job, skip);
   const fallback = fallbackApplyEmail(job.sourceUrl, skip);
-  const hiringEmail = await pickDeliverableEmail([extracted, fallback], bounced);
+  const hiringEmail = await pickDeliverableEmail([extracted, curated, fallback], bounced);
   if (!hiringEmail) {
     const board = await applyOnCareersForm();
     if (board?.ok) return { status: "sent", score, reason: "CV submitted on the careers page." };
@@ -799,15 +808,25 @@ async function upsertIncomingJob(
     return "inserted" as const;
   }
   if (existing.status === "sent") return "skipped" as const;
+
+  const houseSeed = job.source === "pakistan-houses" || job.source === "remote-houses";
   existing.description = String(job.description || existing.description);
   existing.location = String(job.location || existing.location);
   if (job.postedAt) existing.postedAt = job.postedAt;
-  if (existing.status === "processed" || existing.status === "rejected") {
+
+  if (existing.status === "rejected") {
     await existing.save();
     return "skipped" as const;
   }
-  // Seeded house careers URLs are stable — do not bump collectedAt or they look “new” every click.
-  const houseSeed = job.source === "pakistan-houses" || job.source === "remote-houses";
+
+  // Re-open houses that were closed only because no email was found, so curated emails / ATS can retry.
+  if (houseSeed && existing.status === "processed") {
+    existing.status = "matched";
+  } else if (existing.status === "processed") {
+    await existing.save();
+    return "skipped" as const;
+  }
+
   if (!houseSeed) existing.collectedAt = new Date();
   await existing.save();
   return "updated" as const;

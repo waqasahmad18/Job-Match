@@ -15,23 +15,36 @@ export async function collectIncomingJobs(
   const { fetchAggregatorJobs } = await import("@/lib/ingest/aggregators");
   const { fetchRemoteOkJobs } = await import("@/lib/ingest/remoteok");
   const { fetchPublicBoardJobs } = await import("@/lib/ingest/publicBoards");
+  const { fetchLahoreGoogleJobs } = await import("@/lib/ingest/googleJobs");
+
+  // Always seed every Lahore + remote house so Collect targets the full house list.
+  const incoming: NormalizedJob[] = [...seedPakistanSoftwareHouses(), ...seedRemoteSoftwareHouses()];
 
   const settled = await Promise.allSettled([
+    fetchLahoreGoogleJobs(limit),
     fetchAggregatorJobs(limit),
     fetchRemoteOkJobs(limit),
     fetchPublicBoardJobs(limit),
-    Promise.resolve(seedPakistanSoftwareHouses()),
-    Promise.resolve(seedRemoteSoftwareHouses()),
+    // Fresh careers-page scrape for a rotating Lahore batch (emails + open roles).
+    fetchPakistanSoftwareHouses(24),
   ]);
 
-  const incoming: NormalizedJob[] = [];
   for (const result of settled) {
-    if (result.status === "fulfilled") incoming.push(...result.value);
-    else errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
+    if (result.status !== "fulfilled") {
+      errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
+      continue;
+    }
+    const value = result.value as NormalizedJob[] | { jobs: NormalizedJob[]; error?: string };
+    if (Array.isArray(value)) {
+      incoming.push(...value);
+    } else {
+      incoming.push(...value.jobs);
+      if (value.error) errors.push(value.error);
+    }
   }
 
   if (options?.ingestHouses) {
-    const houses = await Promise.allSettled([fetchPakistanSoftwareHouses(), fetchRemoteSoftwareHouses()]);
+    const houses = await Promise.allSettled([fetchPakistanSoftwareHouses(30), fetchRemoteSoftwareHouses()]);
     for (const result of houses) {
       if (result.status === "fulfilled") incoming.push(...result.value);
       else errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
@@ -51,12 +64,15 @@ export async function collectIncomingJobs(
     jobs.push(job);
   }
 
-  // Prefer worldwide remote boards first so Collect does not look “Lahore-only”.
+  // Lahore houses + Google Jobs first, then worldwide remote.
   jobs.sort((left, right) => {
-    const leftRemote = left.source === "remote-houses" || /remote|worldwide/i.test(left.location) ? 0 : 1;
-    const rightRemote = right.source === "remote-houses" || /remote|worldwide/i.test(right.location) ? 0 : 1;
-    if (leftRemote !== rightRemote) return leftRemote - rightRemote;
-    return left.source === "pakistan-houses" ? 1 : right.source === "pakistan-houses" ? -1 : 0;
+    const rank = (job: NormalizedJob) => {
+      if (job.source === "pakistan-houses") return 0;
+      if (job.source === "jsearch") return 1;
+      if (job.source === "remote-houses") return 2;
+      return 3;
+    };
+    return rank(left) - rank(right);
   });
 
   return {

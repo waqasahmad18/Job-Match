@@ -34,7 +34,7 @@ export default function DashboardPage() {
       const res = await fetch("/api/pipeline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ingest: true, limit: 40, sendBatch: 12 }),
+        body: JSON.stringify({ ingest: true, ingestHouses: true, limit: 50, sendBatch: 16 }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 504 || res.status === 502) {

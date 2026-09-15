@@ -34,10 +34,16 @@ Set these in the Vercel project before deploy. Do not commit `.env.local`.
 - `RECENT_JOB_MAX_DAYS` = `14`
 - `LAHORE_DAILY_SEND_MAX` = `25`
 - `REMOTE_DAILY_SEND_TARGET` = `25`
+- `RAPIDAPI_KEY` — **required for Google Jobs** (JSearch). Without it, Lahore full-stack Google postings are skipped. Get a key from RapidAPI → JSearch, then set it in Vercel env.
 
 ## Daily automation
 
 Vercel Hobby allows one cron per day. It is set to `0 3 * * *` UTC, which is the **8:00–8:59 AM Pakistan** hour. Vercel may fire anytime inside that hour.
+
+Collect targets:
+- Every seeded Lahore software house (careers page email / Contact Us / Greenhouse ATS)
+- Google Jobs full-stack Lahore queries via JSearch when `RAPIDAPI_KEY` is set
+- Worldwide remote houses + public remote boards
 
 Later waves use GitHub Actions. In the GitHub repo go to **Settings → Secrets and variables → Actions** and add:
 
