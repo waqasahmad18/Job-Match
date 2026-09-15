@@ -5,12 +5,13 @@ import { loadBouncedEmails, pickDeliverableEmail } from "@/lib/verifyEmail";
 import { generateApplicationEmail, sendApplicationEmail, smtpConfigured } from "@/lib/email";
 import { analyzeJobWithAi } from "@/lib/matching/ai";
 import { evaluateHardReject } from "@/lib/matching/exclusions";
-import { classifyLocation, evaluateLocationPolicy, locationPriority } from "@/lib/matching/location";
+import { classifyLocation, evaluateLocationPolicy } from "@/lib/matching/location";
 import { evaluateJobRecency } from "@/lib/matching/recency";
 import { evaluateMinimumSalary } from "@/lib/matching/salary";
 import { scoreJobByKeywords } from "@/lib/matching/keywordScore";
 import {
   alreadyApproachedCompany,
+  alreadySkippedNoEmailToday,
   acquireLocalPipelineLock,
   acquireMongoPipelineLock,
   claimInFlight,
@@ -357,6 +358,12 @@ export async function processJob(
     return { status: "duplicate", score, reason: "Company already approached." };
   }
 
+  if (await alreadySkippedNoEmailToday(job.company)) {
+    job.status = "processed";
+    await job.save();
+    return { status: "skipped", score, reason: "Already checked today — no hiring email on careers page." };
+  }
+
   const today = await sentTodayCount();
   if (today >= settings.dailySendLimit) {
     job.status = "matched";
@@ -407,6 +414,10 @@ export async function processJob(
 
   async function applyOnCareersForm() {
     if (!attachment || !job.sourceUrl?.startsWith("http")) return null;
+    const source = String(job.source || "");
+    if (source !== "pakistan-houses" && source !== "remote-houses" && !/greenhouse|lever\.co/i.test(job.sourceUrl)) {
+      return { ok: false as const, error: "Skip careers form for board listings." };
+    }
     const { applyOnCareersBoard } = await import("@/lib/careersApply");
     const board = await applyOnCareersBoard({
       sourceUrl: job.sourceUrl,
@@ -455,7 +466,7 @@ export async function processJob(
   if (!hiringEmail) {
     const board = await applyOnCareersForm();
     if (board?.ok) return { status: "sent", score, reason: "CV submitted on the careers page." };
-    job.status = "matched";
+    job.status = "processed";
     await job.save();
     await logDecision({
       jobId: job._id,
@@ -753,7 +764,13 @@ export async function runPipeline(options?: {
 }
 
 async function upsertIncomingJob(
-  job: Record<string, unknown> & { fingerprint: string; description?: string; location?: string; postedAt?: Date },
+  job: Record<string, unknown> & {
+    fingerprint: string;
+    description?: string;
+    location?: string;
+    postedAt?: Date;
+    source?: string;
+  },
 ) {
   const existing = await Job.findOne({ fingerprint: job.fingerprint });
   if (!existing) {
@@ -768,9 +785,21 @@ async function upsertIncomingJob(
     await existing.save();
     return "skipped" as const;
   }
-  existing.collectedAt = new Date();
+  // Seeded house careers URLs are stable — do not bump collectedAt or they look “new” every click.
+  const houseSeed = job.source === "pakistan-houses" || job.source === "remote-houses";
+  if (!houseSeed) existing.collectedAt = new Date();
   await existing.save();
   return "updated" as const;
+}
+
+function interleaveJobs<T>(lahore: T[], remote: T[]) {
+  const out: T[] = [];
+  const max = Math.max(lahore.length, remote.length);
+  for (let i = 0; i < max; i += 1) {
+    if (i < remote.length) out.push(remote[i]);
+    if (i < lahore.length) out.push(lahore[i]);
+  }
+  return out;
 }
 
 async function processFreshJobs(
@@ -780,18 +809,18 @@ async function processFreshJobs(
   progress: PipelineProgress,
   deadline = Date.now() + 52_000,
 ) {
-  const fresh = await Job.find({ status: { $in: ["new", "matched"] } }).limit(300);
-  const jobs = [...fresh]
+  const fresh = await Job.find({ status: { $in: ["new", "matched"] } }).limit(400);
+  const allowed = [...fresh]
     .filter((job) => classifyLocation(job, settings).allowed)
     .sort((left, right) => {
-      const leftRank = locationPriority(classifyLocation(left, settings).class);
-      const rightRank = locationPriority(classifyLocation(right, settings).class);
-      if (leftRank !== rightRank) return leftRank - rightRank;
       const leftTime = new Date(left.postedAt || left.collectedAt || 0).getTime();
       const rightTime = new Date(right.postedAt || right.collectedAt || 0).getTime();
       return rightTime - leftTime;
-    })
-    .slice(0, limit);
+    });
+  const lahore = allowed.filter((job) => isLahoreJob(job, settings));
+  const remote = allowed.filter((job) => !isLahoreJob(job, settings));
+  const jobs = interleaveJobs(lahore, remote).slice(0, Math.max(limit, 40));
+
   for (const job of jobs) {
     if (Date.now() >= deadline) break;
     if (await dailyTargetReached(progress)) break;
@@ -821,15 +850,13 @@ async function ensureDailyQuotas(
 ) {
   const houseJobs = await Job.find({
     source: { $in: ["pakistan-houses", "remote-houses"] },
-    status: { $in: ["new", "matched", "processed"] },
-  }).limit(60);
-  const lahoreFirst = [...houseJobs].sort((left, right) => {
-    const leftLahore = left.source === "pakistan-houses" ? 0 : 1;
-    const rightLahore = right.source === "pakistan-houses" ? 0 : 1;
-    return leftLahore - rightLahore;
-  });
+    status: { $in: ["new", "matched"] },
+  }).limit(80);
+  const lahore = houseJobs.filter((job) => job.source === "pakistan-houses");
+  const remote = houseJobs.filter((job) => job.source === "remote-houses");
+  const ordered = interleaveJobs(lahore, remote);
 
-  for (const job of lahoreFirst) {
+  for (const job of ordered) {
     if (Date.now() >= deadline) break;
     if (await dailyTargetReached(progress)) break;
     const lahoreJob = isLahoreJob(job, settings);
@@ -837,8 +864,6 @@ async function ensureDailyQuotas(
     const buckets = await sentTodayLocationCounts(settings);
     if (lahoreJob && buckets.lahore >= LAHORE_DAILY_SEND_TARGET) continue;
     if (!lahoreJob && buckets.remote >= REMOTE_DAILY_SEND_TARGET) continue;
-    const lahoreNeeded = Math.max(0, LAHORE_DAILY_SEND_TARGET - buckets.lahore);
-    if (!lahoreJob && progress.dailyTarget - buckets.lahore - buckets.remote <= lahoreNeeded) continue;
     try {
       const result = await processJob(String(job._id), settings);
       countSuccessfulSend(progress, result.status, lahoreJob);

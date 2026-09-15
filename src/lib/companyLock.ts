@@ -51,6 +51,17 @@ export async function alreadyApproachedCompany(input: {
   });
 }
 
+/** Avoid burning the Vercel minute on the same no-email house every Collect click. */
+export async function alreadySkippedNoEmailToday(company: string) {
+  const wantedCompany = normalizeCompany(company);
+  const apps = await Application.find({
+    status: "skipped",
+    reason: /No confirmed hiring email/i,
+    createdAt: { $gte: startOfPakistanDay() },
+  }).select("companyName");
+  return apps.some((app) => normalizeCompany(app.companyName || "") === wantedCompany);
+}
+
 let pipelineLocked = false;
 
 export function acquireLocalPipelineLock() {

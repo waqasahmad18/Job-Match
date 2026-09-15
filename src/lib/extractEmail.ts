@@ -110,11 +110,19 @@ export async function findCompanyApplyEmail(sourceUrl?: string, skipEmails: stri
 }
 
 export async function extractApplyEmailFromListing(
-  job: { description?: string; sourceUrl?: string },
+  job: { description?: string; sourceUrl?: string; source?: string },
   skipEmails: string[] = [],
 ) {
   const fromText = extractApplyEmail(`${job.description || ""} ${job.sourceUrl || ""}`, skipEmails);
   if (fromText) return fromText;
+  const source = job.source || "";
+  const url = job.sourceUrl || "";
+  const companySite =
+    source === "pakistan-houses" ||
+    source === "remote-houses" ||
+    /\/(careers|jobs|contact)/i.test(url) ||
+    /boards\.greenhouse|jobs\.lever|job-boards\.greenhouse/i.test(url);
+  if (!companySite) return null;
   return findCompanyApplyEmail(job.sourceUrl, skipEmails);
 }
 

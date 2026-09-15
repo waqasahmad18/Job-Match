@@ -158,7 +158,12 @@ export async function applyOnCareersBoard(input: {
   coverLetter: string;
 }): Promise<CareersApplyResult> {
   if (!input.sourceUrl?.startsWith("http")) return { ok: false, error: "No careers URL." };
-  const html = await readText(input.sourceUrl);
+  const quickGreenhouse = greenhouseToken("", input.sourceUrl);
+  if (quickGreenhouse) return applyGreenhouse(quickGreenhouse, input);
+  const quickLever = leverAccount("", input.sourceUrl);
+  if (quickLever) return applyLever(quickLever, input);
+
+  const html = await readText(input.sourceUrl, 3000);
   const greenhouse = greenhouseToken(html, input.sourceUrl);
   if (greenhouse) return applyGreenhouse(greenhouse, input);
   const lever = leverAccount(html, input.sourceUrl);

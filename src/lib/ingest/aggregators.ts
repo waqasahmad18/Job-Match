@@ -147,5 +147,5 @@ export async function fetchAggregatorJobs(limit = 40) {
     fetchMuse(limit),
     ...queries.map((query) => fetchJSearch(query, 15)),
   ]);
-  return results.flatMap((result) => (result.status === "fulfilled" ? result.value : [])).slice(0, limit * 2);
+  return results.flatMap((result) => (result.status === "fulfilled" ? result.value : [])).slice(0, Math.max(limit * 3, 80));
 }
