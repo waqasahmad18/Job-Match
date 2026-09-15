@@ -288,6 +288,13 @@ export async function processJob(
       job.source === "pakistan-houses"
         ? "Lahore software-house full-stack application."
         : "Remote company-site full-stack application.";
+  } else if (
+    classifyLocation(job, settings).class === "remote-worldwide" &&
+    /full\s*stack|software (engineer|developer)|react|next\.?js|node\.?js|mern/i.test(job.title)
+  ) {
+    score = Math.max(score, 78);
+    relevant = true;
+    reason = `${reason} Remote software role boosted for worldwide quota.`;
   }
 
   if (keyword.relevant && process.env.AI_API_KEY) {
@@ -358,7 +365,7 @@ export async function processJob(
     return { status: "duplicate", score, reason: "Company already approached." };
   }
 
-  if (await alreadySkippedNoEmailToday(job.company)) {
+  if (await alreadySkippedNoEmailToday(job.company) && job.source !== "remote-houses") {
     job.status = "processed";
     await job.save();
     return { status: "skipped", score, reason: "Already checked today — no hiring email on careers page." };
@@ -415,7 +422,14 @@ export async function processJob(
   async function applyOnCareersForm() {
     if (!attachment || !job.sourceUrl?.startsWith("http")) return null;
     const source = String(job.source || "");
-    if (source !== "pakistan-houses" && source !== "remote-houses" && !/greenhouse|lever\.co/i.test(job.sourceUrl)) {
+    const { remoteHouseAts } = await import("@/lib/ingest/remoteHouses");
+    const preferredAts = source === "remote-houses" ? remoteHouseAts(job.company) : null;
+    if (
+      source !== "pakistan-houses" &&
+      source !== "remote-houses" &&
+      !preferredAts &&
+      !/greenhouse|lever\.co|ashbyhq/i.test(job.sourceUrl)
+    ) {
       return { ok: false as const, error: "Skip careers form for board listings." };
     }
     const { applyOnCareersBoard } = await import("@/lib/careersApply");
@@ -425,6 +439,7 @@ export async function processJob(
       cvPath: attachment.path,
       cvFileName: attachment.filename,
       coverLetter: email.body,
+      preferredAts,
     });
     if (!board.ok) return board;
     job.status = "sent";
@@ -441,6 +456,12 @@ export async function processJob(
       reason: `CV submitted on the ${board.via} careers page.`,
     });
     return board;
+  }
+
+  // Worldwide remote houses: try Greenhouse/Lever before giving up on missing emails.
+  if (job.source === "remote-houses") {
+    const board = await applyOnCareersForm();
+    if (board?.ok) return { status: "sent", score, reason: "CV submitted on the careers page." };
   }
 
   if (isCareersPageOnly(job.company) && job.sourceUrl?.startsWith("http")) {

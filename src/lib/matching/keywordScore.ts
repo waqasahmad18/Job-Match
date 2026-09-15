@@ -32,7 +32,7 @@ export function scoreJobByKeywords(
 
   const skillScore = Math.min(70, matchedSkills.length * 12);
   const roleScore = roleHits.length || strongTitle ? 20 : job.title.toLowerCase().includes("software") ? 12 : 0;
-  const locationScore = lahoreOnsite ? 18 : lahoreRemote ? 16 : remoteAnywhere ? 10 : 0;
+  const locationScore = lahoreOnsite ? 18 : lahoreRemote ? 16 : remoteAnywhere ? 15 : 0;
   const score = Math.min(99, skillScore + roleScore + locationScore);
 
   const relevant = score >= 55 && matchedSkills.length >= 2;

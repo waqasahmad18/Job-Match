@@ -10,7 +10,7 @@ const FETCH_HEADERS = {
 
 export type CareersApplyResult = {
   ok: boolean;
-  via?: "greenhouse" | "lever";
+  via?: "greenhouse" | "lever" | "ashby";
   jobUrl?: string;
   error?: string;
 };
@@ -150,23 +150,69 @@ async function applyLever(account: string, input: {
   return { ok: true, via: "lever", jobUrl: job.absolute_url };
 }
 
+async function applyAshby(board: string, input: {
+  settings: UserSettings;
+  cvPath: string;
+  cvFileName: string;
+  coverLetter: string;
+}): Promise<CareersApplyResult> {
+  const payload = await fetch(`https://api.ashbyhq.com/posting-api/job-board/${board}`, {
+    headers: { Accept: "application/json", "User-Agent": "job-match-automation/1.0" },
+    signal: AbortSignal.timeout(5000),
+    cache: "no-store",
+  })
+    .then((res) => (res.ok ? res.json() : null))
+    .catch(() => null) as {
+    jobs?: Array<{ id: string; title?: string; jobUrl?: string; location?: string }>;
+  } | null;
+  const jobs = (payload?.jobs || []).map((item) => ({
+    id: item.id,
+    title: item.title,
+    absolute_url: item.jobUrl,
+    location: { name: item.location },
+  }));
+  const job = pickSoftwareJob(jobs);
+  if (!job?.id) return { ok: false, error: "No Ashby software role found." };
+
+  // Ashby public apply endpoints vary; keep the open role URL for the Applications page.
+  return {
+    ok: false,
+    via: "ashby",
+    jobUrl: job.absolute_url,
+    error: "Ashby board found — open the role URL to finish apply.",
+  };
+}
+
 export async function applyOnCareersBoard(input: {
   sourceUrl?: string;
   settings: UserSettings;
   cvPath: string;
   cvFileName: string;
   coverLetter: string;
+  preferredAts?: { type: "greenhouse" | "lever" | "ashby"; board: string } | null;
 }): Promise<CareersApplyResult> {
+  if (input.preferredAts?.type === "greenhouse" && input.preferredAts.board) {
+    return applyGreenhouse(input.preferredAts.board, input);
+  }
+  if (input.preferredAts?.type === "lever" && input.preferredAts.board) {
+    return applyLever(input.preferredAts.board, input);
+  }
+  if (input.preferredAts?.type === "ashby" && input.preferredAts.board) {
+    return applyAshby(input.preferredAts.board, input);
+  }
+
   if (!input.sourceUrl?.startsWith("http")) return { ok: false, error: "No careers URL." };
   const quickGreenhouse = greenhouseToken("", input.sourceUrl);
   if (quickGreenhouse) return applyGreenhouse(quickGreenhouse, input);
   const quickLever = leverAccount("", input.sourceUrl);
   if (quickLever) return applyLever(quickLever, input);
 
-  const html = await readText(input.sourceUrl, 3000);
+  const html = await readText(input.sourceUrl, 4000);
   const greenhouse = greenhouseToken(html, input.sourceUrl);
   if (greenhouse) return applyGreenhouse(greenhouse, input);
   const lever = leverAccount(html, input.sourceUrl);
   if (lever) return applyLever(lever, input);
+  const ashby = (html.match(/jobs\.ashbyhq\.com\/([a-z0-9_-]+)/i) || [])[1];
+  if (ashby) return applyAshby(ashby, input);
   return { ok: false, error: "Careers page is not Greenhouse or Lever." };
 }
